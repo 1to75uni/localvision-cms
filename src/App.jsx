@@ -282,6 +282,8 @@ function App() {
     duration: 10,
     fileName: '',
   })
+  const [uploadFile, setUploadFile] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   const [newDevice, setNewDevice] = useState({
     name: '',
@@ -345,12 +347,15 @@ function App() {
   const currentRightContent = selectedDeviceRightContents[0]
 
   async function apiRequest(path, options = {}) {
+    const isFormData = options.body instanceof FormData
     const response = await fetch(path, {
       ...options,
-      headers: {
-        'content-type': 'application/json',
-        ...(options.headers || {}),
-      },
+      headers: isFormData
+        ? (options.headers || {})
+        : {
+            'content-type': 'application/json',
+            ...(options.headers || {}),
+          },
     })
 
     const payload = await response.json().catch(() => ({}))
@@ -470,7 +475,7 @@ function App() {
     showToast('업체가 삭제되었습니다.')
   }
 
-  function handleAddContent() {
+  async function handleAddContent() {
     if (!newContent.title.trim()) {
       alert('콘텐츠 제목을 입력해주세요.')
       return
@@ -478,6 +483,40 @@ function App() {
 
     const side = newContent.side
     const store = side === 'right' ? '_common' : selectedStore
+
+    if (uploadFile) {
+      try {
+        setIsUploading(true)
+        const form = new FormData()
+        form.append('file', uploadFile)
+        form.append('title', newContent.title.trim())
+        form.append('side', side)
+        form.append('store', selectedStore)
+        form.append('duration', String(Number(newContent.duration) || 10))
+
+        const payload = await apiRequest('/api/upload', {
+          method: 'POST',
+          body: form,
+          headers: {},
+        })
+
+        updateData({ contents: [payload.content, ...contents] })
+        setServerStatus('connected')
+        setNewContent({ title: '', side: 'left', type: 'image', duration: 10, fileName: '' })
+        setUploadFile(null)
+        showToast('R2 업로드와 D1 저장이 완료되었습니다.')
+        return
+      } catch (error) {
+        console.error(error)
+        setServerStatus('local')
+        alert(`업로드 실패: ${error.message}`)
+      } finally {
+        setIsUploading(false)
+      }
+
+      return
+    }
+
     const fileName =
       newContent.fileName.trim() ||
       `${side}_${contents.filter((item) => item.side === side && item.store === store).length + 1}.${newContent.type === 'video' ? 'mp4' : 'jpg'}`
@@ -491,6 +530,7 @@ function App() {
       duration: Number(newContent.duration) || 10,
       status: '사용중',
       fileName,
+      url: '',
       updatedAt: getToday(),
     }
 
@@ -500,7 +540,8 @@ function App() {
       body: JSON.stringify(nextContent),
     })
     setNewContent({ title: '', side: 'left', type: 'image', duration: 10, fileName: '' })
-    showToast('콘텐츠가 저장되었습니다.')
+    setUploadFile(null)
+    showToast('콘텐츠 정보가 저장되었습니다.')
   }
 
   function handleDeleteContent(id) {
@@ -695,7 +736,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v1.4</span>
+            <span>CMS Console v1.5</span>
           </div>
         </div>
 
@@ -717,8 +758,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>Player API 연결 준비</strong>
-          <span>다음 단계: R2 업로드 연결</span>
+          <strong>R2 업로드 연결</strong>
+          <span>다음 단계: Player 실제 재생 연결</span>
         </div>
       </aside>
 
@@ -753,8 +794,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.4부터 Player용 playlist API가 추가되었습니다.</strong>
-                <p>이제 TV Player가 /api/playlist와 /api/player-config를 통해 CMS의 D1 데이터를 읽을 수 있는 구조입니다.</p>
+                <strong>v1.5부터 이미지/영상 업로드 기능이 추가되었습니다.</strong>
+                <p>파일을 선택해 콘텐츠를 저장하면 R2에 업로드되고, D1에는 콘텐츠 정보와 미디어 URL이 기록됩니다.</p>
               </div>
             </div>
 
@@ -907,7 +948,7 @@ function App() {
 
             <div className="form-card">
               <h3>새 콘텐츠 추가</h3>
-              <div className="form-grid content-form">
+              <div className="form-grid content-form upload-form">
                 <input
                   placeholder="콘텐츠 제목 예: 대표메뉴 영상"
                   value={newContent.title}
@@ -935,14 +976,32 @@ function App() {
                   onChange={(event) => setNewContent({ ...newContent, duration: event.target.value })}
                 />
                 <input
-                  placeholder="파일명 예: left_1.mp4"
+                  placeholder="파일명만 저장할 때 예: left_1.mp4"
                   value={newContent.fileName}
                   onChange={(event) => setNewContent({ ...newContent, fileName: event.target.value })}
                 />
+                <label className="file-picker">
+                  <UploadCloud size={16} />
+                  <span>{uploadFile ? uploadFile.name : '이미지/영상 파일 선택'}</span>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      setUploadFile(file || null)
+                      if (file?.type?.startsWith('video/')) {
+                        setNewContent((prev) => ({ ...prev, type: 'video' }))
+                      }
+                      if (file?.type?.startsWith('image/')) {
+                        setNewContent((prev) => ({ ...prev, type: 'image' }))
+                      }
+                    }}
+                  />
+                </label>
               </div>
-              <button className="primary-btn" onClick={handleAddContent}>
+              <button className="primary-btn" onClick={handleAddContent} disabled={isUploading}>
                 <Save size={16} />
-                콘텐츠 저장
+                {isUploading ? '업로드 중...' : uploadFile ? 'R2 업로드 + 콘텐츠 저장' : '콘텐츠 정보 저장'}
               </button>
             </div>
 
@@ -965,6 +1024,7 @@ function App() {
                       </div>
                       <h3>{content.title}</h3>
                       <p>{storeName} · {content.duration}초 · {content.fileName} · {content.updatedAt}</p>
+                      {content.url && <a className="media-link" href={content.url} target="_blank" rel="noreferrer">미디어 열기</a>}
                     </div>
                     <button className="icon-btn" onClick={() => handleDeleteContent(content.id)}>
                       <Trash2 size={15} />

@@ -977,3 +977,59 @@ tbody tr:hover,
     grid-column: auto;
   }
 }
+
+
+/* v1.5 R2 upload */
+.upload-form {
+  grid-template-columns: 1.6fr 1.2fr 0.8fr 0.7fr 1fr 1.4fr;
+}
+
+.file-picker {
+  min-height: 46px;
+  border: 1px dashed #93c5fd;
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  overflow: hidden;
+}
+
+.file-picker span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-picker input {
+  display: none;
+}
+
+.primary-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.media-link {
+  margin-top: 8px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  display: inline-flex;
+}
+
+@media (max-width: 1180px) {
+  .upload-form {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .upload-form {
+    grid-template-columns: 1fr;
+  }
+}
