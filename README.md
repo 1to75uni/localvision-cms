@@ -1,6 +1,6 @@
 # LocalVision CMS
 
-LocalVision CMS v1.5 입니다.
+LocalVision CMS v1.5.1 입니다.
 
 ## v1.5 추가 기능
 - CMS에서 이미지/영상 파일 업로드
