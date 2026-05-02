@@ -1,6 +1,6 @@
 {
   "name": "localvision-cms",
-  "version": "0.1.9",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {

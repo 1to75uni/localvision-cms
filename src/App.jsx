@@ -235,10 +235,17 @@ function makePlayerUrl(slug, settings, deviceId = '') {
   const params = new URLSearchParams({
     store: slug,
     apiBase: settings.apiBase,
+    refresh: '3600000',
+    heartbeat: '30000',
     restart: settings.restart,
     restartMode: settings.restartMode,
     restartJitterSec: settings.restartJitterSec,
-    cacheMax: settings.cacheMax,
+    cacheMax: settings.cacheMax || '60',
+    bundleMode: 'cache',
+    cacheAll: '1',
+    videoMode: 'cache',
+    activateWhenCached: '1',
+    fit: 'cover',
   })
 
   if (deviceId) {
@@ -296,6 +303,8 @@ function App() {
   const [toast, setToast] = useState('')
   const [contentTab, setContentTab] = useState('left')
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
+  const [screenshots, setScreenshots] = useState({})
+  const [isScreenshotLoading, setIsScreenshotLoading] = useState(false)
   const [serverStatus, setServerStatus] = useState('checking')
 
   const [newStore, setNewStore] = useState({
@@ -335,6 +344,12 @@ function App() {
     setNewDevice((prev) => ({ ...prev, store: selectedStore }))
   }, [selectedStore])
 
+  useEffect(() => {
+    if (selectedDeviceId) {
+      loadLatestScreenshot(selectedDeviceId)
+    }
+  }, [selectedDeviceId])
+
   function showToast(message) {
     setToast(message)
     window.setTimeout(() => setToast(''), 1800)
@@ -373,6 +388,7 @@ function App() {
   const offlineDevices = devices.filter((device) => !device.online)
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
+  const selectedScreenshot = selectedDevice ? screenshots[selectedDevice.id] : null
   const selectedDeviceStore = stores.find((store) => store.slug === selectedDevice?.store)
   const selectedDeviceLeftContents = contents.filter(
     (content) => content.side === 'left' && content.store === selectedDevice?.store
@@ -716,78 +732,74 @@ function App() {
     })
   }
 
-  function handleRemoteRefresh(deviceId) {
-    const now = new Date().toLocaleString('ko-KR')
+  async function sendDeviceCommand(deviceId, command) {
+    const now = new Date().toISOString()
+
     updateData({
       devices: devices.map((device) =>
         device.id === deviceId
           ? {
               ...device,
-              lastCommand: 'refresh',
+              lastCommand: command,
               commandAt: now,
             }
           : device
       ),
     })
 
-    sendToServer('/api/devices', {
+    await apiRequest('/api/devices', {
       method: 'PATCH',
       body: JSON.stringify({
         id: deviceId,
-        lastCommand: 'refresh',
+        lastCommand: command,
         commandAt: now,
       }),
     })
 
-    showToast('새로고침 요청을 기록했습니다. 다음 단계에서 실제 TV 명령으로 연결합니다.')
+    setServerStatus('connected')
+    return now
   }
 
-  function handlePreviewScreenshot() {
+  async function handleRemoteRefresh(deviceId) {
+    try {
+      await sendDeviceCommand(deviceId, 'refresh')
+      showToast('TV 새로고침 요청을 보냈습니다. 앱이 명령을 확인하면 화면을 다시 불러옵니다.')
+    } catch (error) {
+      showToast(`새로고침 요청 실패: ${error.message}`)
+    }
+  }
+
+  async function handleRequestScreenshot() {
     if (!selectedDevice) return
 
-    const canvas = document.createElement('canvas')
-    canvas.width = 1344
-    canvas.height = 1080
-    const ctx = canvas.getContext('2d')
+    try {
+      setIsScreenshotLoading(true)
+      await sendDeviceCommand(selectedDevice.id, 'screenshot')
+      showToast('TV 현재화면 캡처 요청을 보냈습니다. 10~20초 후 이미지가 갱신됩니다.')
 
-    ctx.fillStyle = '#0b1220'
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 12000)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 22000)
+    } catch (error) {
+      showToast(`스크린샷 요청 실패: ${error.message}`)
+      setIsScreenshotLoading(false)
+    }
+  }
 
-    ctx.fillStyle = '#111827'
-    ctx.fillRect(0, 0, 940, 1080)
+  async function loadLatestScreenshot(deviceId = selectedDevice?.id) {
+    if (!deviceId) return
 
-    ctx.fillStyle = '#1d4ed8'
-    ctx.fillRect(940, 0, 404, 1080)
-
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 58px Arial'
-    ctx.fillText(selectedDeviceStore?.name || selectedDevice.store, 64, 110)
-
-    ctx.font = 'bold 42px Arial'
-    ctx.fillText('LEFT 70% 매장 콘텐츠', 64, 210)
-
-    ctx.font = '32px Arial'
-    ctx.fillText(currentLeftContent?.title || '등록된 좌측 콘텐츠 없음', 64, 285)
-    ctx.fillText(currentLeftContent?.fileName || '-', 64, 335)
-
-    ctx.font = 'bold 34px Arial'
-    ctx.fillText('RIGHT 30%', 982, 110)
-    ctx.fillText('공통 콘텐츠', 982, 155)
-
-    ctx.font = '28px Arial'
-    wrapCanvasText(ctx, currentRightContent?.title || '등록된 우측 콘텐츠 없음', 982, 235, 300, 36)
-
-    ctx.fillStyle = 'rgba(255,255,255,0.82)'
-    ctx.font = '24px Arial'
-    ctx.fillText(`Device: ${selectedDevice.name}`, 64, 1010)
-    ctx.fillText(`Captured Preview: ${new Date().toLocaleString('ko-KR')}`, 64, 1046)
-
-    const url = canvas.toDataURL('image/png')
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `localvision-preview-${selectedDevice.store}-${getToday()}.png`
-    a.click()
-    showToast('현재화면 미리보기 스크린샷을 다운로드했습니다.')
+    try {
+      const payload = await apiRequest(`/api/screenshots?deviceId=${encodeURIComponent(deviceId)}`)
+      setScreenshots((prev) => ({
+        ...prev,
+        [deviceId]: payload.screenshot,
+      }))
+      setServerStatus('connected')
+    } catch (error) {
+      setServerStatus('local')
+    } finally {
+      setIsScreenshotLoading(false)
+    }
   }
 
   function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
@@ -861,7 +873,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v1.9</span>
+            <span>CMS Console v2.2</span>
           </div>
         </div>
 
@@ -883,8 +895,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>TV 설치 URL 업데이트</strong>
-          <span>새 Player 주소 연결</span>
+          <strong>오프라인 번들 캐시 적용</strong>
+          <span>Player v1.4 오프라인 번들</span>
         </div>
       </aside>
 
@@ -919,8 +931,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.9에서 TV 설치용 URL을 새 Player 주소로 업데이트했습니다.</strong>
-                <p>앞으로 업체 관리와 단말기 상태에서 복사하는 TV 주소는 localvision-player.pages.dev 기준으로 생성됩니다.</p>
+                <strong>v2.1에서 Player v1.4 오프라인 번들 옵션을 TV 설치용 URL에 적용했습니다.</strong>
+                <p>영상과 이미지를 1시간 단위로 전체 다운로드하고, 다운로드 완료된 묶음만 TV에 적용하는 설정이 자동으로 붙습니다.</p>
               </div>
             </div>
 
@@ -1442,8 +1454,8 @@ function App() {
             <div className="notice-card">
               <Eye size={20} />
               <div>
-                <strong>TV 카드를 클릭하면 해당 업체의 현재 편성 콘텐츠를 볼 수 있습니다.</strong>
-                <p>v1.2의 스크린샷은 CMS 미리보기 캡처입니다. 실제 TV 화면 캡처는 다음 단계에서 Player 앱과 서버를 연결합니다.</p>
+                <strong>TV 카드를 클릭하면 새로고침과 현재화면 캡처를 요청할 수 있습니다.</strong>
+                <p>Android TV App v2.6 이상이 설치되어 있어야 실제 TV 화면 캡처가 업로드됩니다.</p>
               </div>
             </div>
 
@@ -1507,9 +1519,9 @@ function App() {
                       <Send size={16} />
                       TV 새로고침 요청
                     </button>
-                    <button className="primary-btn camera-btn" onClick={handlePreviewScreenshot}>
+                    <button className="primary-btn camera-btn" onClick={handleRequestScreenshot}>
                       <Camera size={16} />
-                      현재화면 스크린샷
+                      {isScreenshotLoading ? '캡처 요청 중...' : '현재화면 캡처 요청'}
                     </button>
                   </div>
                 </div>
@@ -1535,7 +1547,7 @@ function App() {
                       </div>
                     </div>
                     <p className="muted-text">
-                      현재는 명령을 CMS에 기록하는 단계입니다. 다음 단계에서 Player가 명령을 polling해서 실제 새로고침합니다.
+                      TV 앱이 15초마다 명령을 확인합니다. refresh는 화면 새로고침, screenshot은 실제 TV 화면 캡처 업로드로 처리됩니다.
                     </p>
                   </div>
                 </div>
@@ -1543,24 +1555,40 @@ function App() {
                 <div className="screen-preview-card">
                   <div className="screen-toolbar">
                     <div>
-                      <h3>현재 화면 미리보기</h3>
-                      <p>좌측 70% 매장 콘텐츠 + 우측 30% 공통 콘텐츠 기준</p>
+                      <h3>실제 TV 현재화면</h3>
+                      <p>TV 앱이 업로드한 최신 스크린샷입니다.</p>
                     </div>
-                    <span>{selectedDevice.online ? 'ONLINE PREVIEW' : 'OFFLINE PREVIEW'}</span>
+                    <div className="button-row">
+                      <button className="mini-btn" onClick={() => loadLatestScreenshot(selectedDevice.id)}>
+                        <RefreshCw size={14} />
+                        캡처 새로고침
+                      </button>
+                      <span>{selectedDevice.online ? 'ONLINE DEVICE' : 'OFFLINE DEVICE'}</span>
+                    </div>
                   </div>
 
-                  <div className="screen-preview">
-                    <div className="preview-left">
-                      <span>LEFT 70%</span>
-                      <strong>{currentLeftContent?.title || '좌측 콘텐츠 없음'}</strong>
-                      <p>{currentLeftContent?.fileName || '콘텐츠를 추가해주세요.'}</p>
+                  {selectedScreenshot?.url ? (
+                    <div className="real-screenshot-wrap">
+                      <img src={`${selectedScreenshot.url}?v=${encodeURIComponent(selectedScreenshot.createdAt || '')}`} alt="TV 현재화면 스크린샷" />
+                      <div className="screenshot-meta">
+                        <span>캡처 시간: {selectedScreenshot.createdAt || '-'}</span>
+                        <a href={selectedScreenshot.url} target="_blank" rel="noreferrer">원본 열기</a>
+                      </div>
                     </div>
-                    <div className="preview-right">
-                      <span>RIGHT 30%</span>
-                      <strong>{currentRightContent?.title || '우측 콘텐츠 없음'}</strong>
-                      <p>{currentRightContent?.fileName || '공통 콘텐츠를 추가해주세요.'}</p>
+                  ) : (
+                    <div className="screen-preview empty-screenshot">
+                      <div className="preview-left">
+                        <span>NO SCREENSHOT</span>
+                        <strong>아직 실제 TV 캡처가 없습니다.</strong>
+                        <p>상단의 현재화면 캡처 요청 버튼을 눌러주세요.</p>
+                      </div>
+                      <div className="preview-right">
+                        <span>READY</span>
+                        <strong>Android TV App v2.6 필요</strong>
+                        <p>앱이 명령을 받으면 이곳에 최신 이미지가 표시됩니다.</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <div className="detail-grid">
