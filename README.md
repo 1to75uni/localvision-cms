@@ -1,22 +1,29 @@
-# LocalVision CMS v2.3
+# LocalVision CMS v2.4 Auto Offline
 
-## v2.3 핵심
+## 핵심 수정
 
-TV 설치용 URL에 Player v1.4.1의 API 미디어 캐시 옵션을 자동 포함합니다.
+단말기 상태가 `online` DB 값에 고정되어 오래 켜져 보이던 문제를 수정했습니다.
 
-## 자동 포함 옵션
+- Player heartbeat가 30초마다 들어옵니다.
+- 마지막 접속 시간이 3분 이상 갱신되지 않으면 CMS에서 자동으로 OFFLINE 처리합니다.
+- `/api/devices`, `/api/backup`, `/api/player-config` 모두 동일한 온라인 판정 로직을 사용합니다.
+- CMS 화면도 30초마다 서버 데이터를 다시 불러와 상태를 갱신합니다.
 
-- refresh=3600000
-- heartbeat=30000
-- bundleMode=cache
-- cacheAll=1
-- videoMode=cache
-- cacheVia=api
-- activateWhenCached=1
-- cacheMax=60
-- fit=cover
+## 온라인 판정 기준
 
-## 왜 필요한가
+기본값: 180초
 
-R2 public URL은 화면 표시에는 문제가 없어도, Player가 `fetch()`로 다운로드해서 캐시에 넣을 때 CORS로 실패할 수 있습니다.
-그래서 Player가 CMS의 `/api/media?key=...`를 통해 미디어를 받아 캐시하도록 변경했습니다.
+Cloudflare Pages/Workers 환경변수로 아래 값을 주면 조정할 수 있습니다.
+
+```txt
+ONLINE_TTL_SEC=180
+```
+
+## 교체할 주요 파일
+
+- `src/App.jsx`
+- `functions/api/devices.js`
+- `functions/api/backup.js`
+- `functions/api/player-config.js`
+
+나머지 파일은 기존 구조 유지를 위해 함께 포함했습니다.

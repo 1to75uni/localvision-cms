@@ -15,6 +15,53 @@ export async function onRequestOptions() {
   return json({ ok: true })
 }
 
+function onlineTtlSec(env) {
+  const value = Number(env.ONLINE_TTL_SEC || 180)
+  return Number.isFinite(value) && value > 0 ? value : 180
+}
+
+function parseLastSeenMs(value, nowMs = Date.now()) {
+  const raw = String(value || '').trim()
+  if (!raw || raw.includes('아직') || raw.includes('오프라인')) return 0
+  if (raw.includes('방금')) return nowMs
+
+  const minuteAgo = raw.match(/(\d+)\s*분\s*전/)
+  if (minuteAgo) return nowMs - Number(minuteAgo[1]) * 60 * 1000
+
+  const hourAgo = raw.match(/(\d+)\s*시간\s*전/)
+  if (hourAgo) return nowMs - Number(hourAgo[1]) * 60 * 60 * 1000
+
+  const secondAgo = raw.match(/(\d+)\s*초\s*전/)
+  if (secondAgo) return nowMs - Number(secondAgo[1]) * 1000
+
+  const ko = raw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  if (ko) {
+    let hour = Number(ko[5])
+    const ampm = ko[4]
+    if (ampm === '오후' && hour < 12) hour += 12
+    if (ampm === '오전' && hour === 12) hour = 0
+    return Date.UTC(Number(ko[1]), Number(ko[2]) - 1, Number(ko[3]), hour - 9, Number(ko[6]), Number(ko[7] || 0))
+  }
+
+  const sql = raw.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (sql) return Date.UTC(Number(sql[1]), Number(sql[2]) - 1, Number(sql[3]), Number(sql[4]), Number(sql[5]), Number(sql[6] || 0))
+
+  const parsed = Date.parse(raw)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function mapDevice(row, env, nowMs = Date.now()) {
+  const lastSeenMs = parseLastSeenMs(row.lastSeen, nowMs)
+  const ttlSec = onlineTtlSec(env)
+  const isFresh = lastSeenMs > 0 && nowMs - lastSeenMs <= ttlSec * 1000
+  return {
+    ...row,
+    online: isFresh,
+    onlineTtlSec: ttlSec,
+    lastSeenAt: lastSeenMs ? new Date(lastSeenMs).toISOString() : '',
+  }
+}
+
 function normalizeContent(row) {
   return {
     id: row.id,
@@ -113,7 +160,8 @@ export async function onRequestGet({ request, env }) {
       app,
       device_code AS deviceCode,
       last_command AS lastCommand,
-      command_at AS commandAt
+      command_at AS commandAt,
+      updated_at AS updatedAt
     FROM devices
     WHERE store = ?
     ORDER BY created_at DESC
@@ -121,7 +169,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.4',
+    version: 'v1.4.3-auto-offline',
     store,
     layout: {
       leftRatio: 70,
@@ -131,10 +179,7 @@ export async function onRequestGet({ request, env }) {
       left: (left.results || []).map(normalizeContent),
       right: (right.results || []).map(normalizeContent),
     },
-    devices: (devices.results || []).map((device) => ({
-      ...device,
-      online: device.online === 1,
-    })),
+    devices: (devices.results || []).map((device) => mapDevice(device, env)),
     updatedAt: new Date().toISOString(),
   })
 }

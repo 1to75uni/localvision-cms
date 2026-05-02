@@ -37,6 +37,7 @@ import {
 const STORAGE_KEY = 'localvision-cms-v1-1'
 const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
+const DEVICE_ONLINE_TTL_MS = 3 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
   'https://player-8kv.pages.dev',
@@ -192,6 +193,44 @@ function getToday() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function parseLastSeenTime(value) {
+  const raw = String(value || '').trim()
+  if (!raw || raw.includes('아직') || raw.includes('오프라인')) return 0
+  if (raw.includes('방금')) return Date.now()
+
+  const secondAgo = raw.match(/(\d+)\s*초\s*전/)
+  if (secondAgo) return Date.now() - Number(secondAgo[1]) * 1000
+
+  const minuteAgo = raw.match(/(\d+)\s*분\s*전/)
+  if (minuteAgo) return Date.now() - Number(minuteAgo[1]) * 60 * 1000
+
+  const hourAgo = raw.match(/(\d+)\s*시간\s*전/)
+  if (hourAgo) return Date.now() - Number(hourAgo[1]) * 60 * 60 * 1000
+
+  const ko = raw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  if (ko) {
+    let hour = Number(ko[5])
+    const ampm = ko[4]
+    if (ampm === '오후' && hour < 12) hour += 12
+    if (ampm === '오전' && hour === 12) hour = 0
+    return new Date(Number(ko[1]), Number(ko[2]) - 1, Number(ko[3]), hour, Number(ko[6]), Number(ko[7] || 0)).getTime()
+  }
+
+  const sql = raw.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (sql) {
+    return new Date(`${sql[1]}-${sql[2]}-${sql[3]}T${sql[4]}:${sql[5]}:${sql[6] || '00'}`).getTime()
+  }
+
+  const parsed = Date.parse(raw)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function isDeviceOnline(device) {
+  const lastSeenTime = parseLastSeenTime(device?.lastSeen)
+  if (!lastSeenTime) return false
+  return Date.now() - lastSeenTime <= DEVICE_ONLINE_TTL_MS
+}
+
 function makeId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 7)}`
 }
@@ -302,6 +341,7 @@ function App() {
   const [selectedStore, setSelectedStore] = useState(data.stores[0]?.slug || 'goobne')
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState('')
+  const [nowTick, setNowTick] = useState(0)
   const [contentTab, setContentTab] = useState('left')
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
   const [screenshots, setScreenshots] = useState({})
@@ -342,6 +382,15 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowTick((value) => value + 1)
+      loadServerData(false)
+    }, 30000)
+
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     setNewDevice((prev) => ({ ...prev, store: selectedStore }))
   }, [selectedStore])
 
@@ -365,7 +414,7 @@ function App() {
   })
 
   const summary = useMemo(() => {
-    const online = devices.filter((device) => device.online).length
+    const online = devices.filter((device) => isDeviceOnline(device)).length
     const left = contents.filter((content) => content.side === 'left').length
     const right = contents.filter((content) => content.side === 'right').length
 
@@ -377,7 +426,7 @@ function App() {
       left,
       right,
     }
-  }, [stores, devices, contents])
+  }, [stores, devices, contents, nowTick])
 
   const leftContents = contents
     .filter((content) => content.side === 'left' && content.store === selectedStore)
@@ -386,7 +435,7 @@ function App() {
     .filter((content) => content.side === 'right')
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
   const contentManageContents = contentTab === 'left' ? leftContents : rightContents
-  const offlineDevices = devices.filter((device) => !device.online)
+  const offlineDevices = devices.filter((device) => !isDeviceOnline(device))
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
   const selectedScreenshot = selectedDevice ? screenshots[selectedDevice.id] : null
@@ -713,10 +762,11 @@ function App() {
     const target = devices.find((device) => device.id === id)
     if (!target) return
 
+    const currentlyOnline = isDeviceOnline(target)
     const updated = {
       ...target,
-      online: !target.online,
-      lastSeen: !target.online ? '방금 전' : '오프라인 전환',
+      online: !currentlyOnline,
+      lastSeen: !currentlyOnline ? new Date().toLocaleString('ko-KR') : '오프라인 전환',
     }
 
     updateData({
@@ -1456,7 +1506,7 @@ function App() {
               <Eye size={20} />
               <div>
                 <strong>TV 카드를 클릭하면 새로고침과 현재화면 캡처를 요청할 수 있습니다.</strong>
-                <p>Android TV App v2.6 이상이 설치되어 있어야 실제 TV 화면 캡처가 업로드됩니다.</p>
+                <p>마지막 접속이 3분 이상 갱신되지 않으면 자동으로 OFFLINE 처리됩니다.</p>
               </div>
             </div>
 
@@ -1472,8 +1522,8 @@ function App() {
                       setSelectedStore(device.store)
                     }}
                   >
-                    <div className={`device-icon ${device.online ? 'online' : 'offline'}`}>
-                      {device.online ? <Wifi size={24} /> : <WifiOff size={24} />}
+                    <div className={`device-icon ${isDeviceOnline(device) ? 'online' : 'offline'}`}>
+                      {isDeviceOnline(device) ? <Wifi size={24} /> : <WifiOff size={24} />}
                     </div>
                     <div>
                       <h3>{device.name}</h3>
@@ -1481,8 +1531,8 @@ function App() {
                       <span>{device.app} · {device.deviceCode} · 마지막 접속 {device.lastSeen}</span>
                     </div>
                     <div className="device-actions">
-                      <strong className={device.online ? 'online-text' : 'offline-text'}>
-                        {device.online ? 'ONLINE' : 'OFFLINE'}
+                      <strong className={isDeviceOnline(device) ? 'online-text' : 'offline-text'}>
+                        {isDeviceOnline(device) ? 'ONLINE' : 'OFFLINE'}
                       </strong>
                       <button
                         className="mini-btn"
@@ -1564,7 +1614,7 @@ function App() {
                         <RefreshCw size={14} />
                         캡처 새로고침
                       </button>
-                      <span>{selectedDevice.online ? 'ONLINE DEVICE' : 'OFFLINE DEVICE'}</span>
+                      <span>{isDeviceOnline(selectedDevice) ? 'ONLINE DEVICE' : 'OFFLINE DEVICE'}</span>
                     </div>
                   </div>
 
