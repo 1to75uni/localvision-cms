@@ -35,8 +35,19 @@ import {
 } from 'lucide-react'
 
 const STORAGE_KEY = 'localvision-cms-v1-1'
-const PLAYER_BASE = 'https://localvision-media-ujb-player.pages.dev'
-const API_BASE = 'https://odd-glitter-4464localvision-api-ujb.1to75uni.workers.dev'
+const PLAYER_BASE = 'https://localvision-player.pages.dev'
+const API_BASE = 'https://localvision-cms.pages.dev'
+const OLD_PLAYER_BASES = [
+  'https://localvision-media-ujb-player.pages.dev',
+  'https://player-8kv.pages.dev',
+  'https://localvision-for-sosang-ujb.pages.dev',
+]
+
+const OLD_API_BASES = [
+  'https://odd-glitter-4464localvision-api-ujb.1to75uni.workers.dev',
+  'https://localvision-api.kiklekidz.workers.dev',
+]
+
 
 const sampleStores = [
   {
@@ -198,18 +209,29 @@ function loadData() {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialData
     const parsed = JSON.parse(raw)
+    const parsedSettings = parsed.settings || {}
+    const nextSettings = { ...initialData.settings, ...parsedSettings }
+
+    if (!nextSettings.playerBase || OLD_PLAYER_BASES.includes(nextSettings.playerBase)) {
+      nextSettings.playerBase = PLAYER_BASE
+    }
+
+    if (!nextSettings.apiBase || OLD_API_BASES.includes(nextSettings.apiBase)) {
+      nextSettings.apiBase = API_BASE
+    }
+
     return {
       stores: Array.isArray(parsed.stores) ? parsed.stores : sampleStores,
       contents: Array.isArray(parsed.contents) ? parsed.contents : sampleContents,
       devices: Array.isArray(parsed.devices) ? parsed.devices : sampleDevices,
-      settings: { ...initialData.settings, ...(parsed.settings || {}) },
+      settings: nextSettings,
     }
   } catch {
     return initialData
   }
 }
 
-function makePlayerUrl(slug, settings) {
+function makePlayerUrl(slug, settings, deviceId = '') {
   const params = new URLSearchParams({
     store: slug,
     apiBase: settings.apiBase,
@@ -218,6 +240,10 @@ function makePlayerUrl(slug, settings) {
     restartJitterSec: settings.restartJitterSec,
     cacheMax: settings.cacheMax,
   })
+
+  if (deviceId) {
+    params.set('deviceId', deviceId)
+  }
 
   return `${settings.playerBase}/?${params.toString()}`
 }
@@ -815,6 +841,17 @@ function App() {
     })
   }
 
+  function handleResetTvUrlSettings() {
+    updateData({
+      settings: {
+        ...settings,
+        apiBase: API_BASE,
+        playerBase: PLAYER_BASE,
+      },
+    })
+    showToast('TV 설치용 URL 설정을 최신 주소로 변경했습니다.')
+  }
+
   return (
     <div className="app-shell">
       {toast && <div className="toast">{toast}</div>}
@@ -824,7 +861,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v1.8</span>
+            <span>CMS Console v1.9</span>
           </div>
         </div>
 
@@ -846,8 +883,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>운영 화면 개선</strong>
-          <span>실사용 CMS 폴리싱</span>
+          <strong>TV 설치 URL 업데이트</strong>
+          <span>새 Player 주소 연결</span>
         </div>
       </aside>
 
@@ -882,8 +919,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.8에서 실사용 운영 화면을 보강했습니다.</strong>
-                <p>콘텐츠 탭 분리, 영상 재생시간 숨김, 사용중/중지, 순서 변경, 오프라인 TV 확인 기능이 추가되었습니다.</p>
+                <strong>v1.9에서 TV 설치용 URL을 새 Player 주소로 업데이트했습니다.</strong>
+                <p>앞으로 업체 관리와 단말기 상태에서 복사하는 TV 주소는 localvision-player.pages.dev 기준으로 생성됩니다.</p>
               </div>
             </div>
 
@@ -1458,11 +1495,11 @@ function App() {
                     <span>{selectedDevice.name} · {selectedDevice.deviceCode}</span>
                   </div>
                   <div className="button-row">
-                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings))}>
+                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings, selectedDevice.id))}>
                       <Copy size={16} />
                       TV 설치용 URL 복사
                     </button>
-                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings)} target="_blank" rel="noreferrer">
+                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings, selectedDevice.id)} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} />
                       TV 화면 열기
                     </a>
@@ -1567,7 +1604,7 @@ function App() {
 
             <div className="settings-grid">
               <div className="panel">
-                <h3>기본 API 주소</h3>
+                <h3>기본 CMS API 주소</h3>
                 <input
                   value={settings.apiBase}
                   onChange={(event) => handleUpdateSetting('apiBase', event.target.value)}
@@ -1579,6 +1616,7 @@ function App() {
                   value={settings.playerBase}
                   onChange={(event) => handleUpdateSetting('playerBase', event.target.value)}
                 />
+                <p className="muted-text">현재 기준: https://localvision-player.pages.dev</p>
               </div>
               <div className="panel">
                 <h3>플레이어 기본 옵션</h3>
@@ -1596,6 +1634,10 @@ function App() {
                   <button className="primary-btn" onClick={handleExportJson}>
                     <Download size={16} />
                     JSON 백업 다운로드
+                  </button>
+                  <button className="ghost-btn" onClick={handleResetTvUrlSettings}>
+                    <RefreshCw size={16} />
+                    TV URL 최신화
                   </button>
                   <button className="ghost-btn" onClick={handleResetSample}>
                     <RotateCcw size={16} />

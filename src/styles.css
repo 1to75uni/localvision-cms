@@ -1283,3 +1283,9 @@ tbody tr:hover,
     justify-content: flex-end;
   }
 }
+
+
+/* v1.9 TV URL update */
+.settings-grid .muted-text {
+  margin-top: 8px;
+}

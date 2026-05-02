@@ -1,24 +1,17 @@
-# LocalVision CMS v1.8
+# LocalVision CMS v1.9
 
-v1.7 콘텐츠 폴리싱과 v1.8 운영 개선을 합친 버전입니다.
+## v1.9 핵심 수정
+- TV 설치용 URL 기본 주소를 새 Player로 변경
+- 기본 TV 화면 주소: https://localvision-player.pages.dev
+- 기본 API 주소: https://localvision-cms.pages.dev
+- 기존 테스트 Player 주소가 localStorage에 남아 있어도 자동 보정
+- 업체 관리 / 대시보드 / 단말기 상세의 TV 설치용 URL 복사 버튼이 새 Player 기준으로 생성됨
 
-## v1.7 반영 사항
-- 영상 선택 시 재생시간(초) 입력칸 숨김
-- 영상 카드에서는 초 표시 제거
-- 이미지일 때만 재생시간 표시
-- 콘텐츠 관리 화면 좌측/우측 탭 분리
-- 콘텐츠 카드에 썸네일/미리보기 표시
-- 콘텐츠 사용중/중지 버튼 추가
-- Player URL 문구를 TV 설치용 URL로 변경
-- API/D1/R2 등 개발자 용어 일부 완화
+## 최종 TV URL 예시
+https://localvision-player.pages.dev/?store=goobne&apiBase=https://localvision-cms.pages.dev&restart=09:30&restartMode=reload&restartJitterSec=0&cacheMax=20
 
-## v1.8 반영 사항
-- 콘텐츠 순서 변경 버튼 추가
-- 대시보드에 오프라인 TV 목록 표시
-- 업체 상세 요약 카드 추가
-- 단말기 상태 상세 정보 정리
-- 콘텐츠 삭제 확인 문구 강화
-- 저장 위치와 현재 선택 업체 안내 개선
+## 단말기 연결 URL 예시
+https://localvision-player.pages.dev/?store=goobne&deviceId=dv_001&apiBase=https://localvision-cms.pages.dev&restart=09:30&restartMode=reload&restartJitterSec=0&cacheMax=20
 
 ## 필요한 바인딩
 - D1: DB
