@@ -218,6 +218,19 @@ function makePlayerUrl(slug, settings) {
   return `${settings.playerBase}/?${params.toString()}`
 }
 
+function getOrigin() {
+  if (typeof window === 'undefined') return ''
+  return window.location.origin
+}
+
+function makePlaylistApiUrl(slug, side) {
+  return `${getOrigin()}/api/playlist?store=${encodeURIComponent(slug)}&side=${encodeURIComponent(side)}`
+}
+
+function makePlayerConfigUrl(slug) {
+  return `${getOrigin()}/api/player-config?store=${encodeURIComponent(slug)}`
+}
+
 function StatCard({ label, value, helper, tone = 'blue' }) {
   return (
     <div className={`stat-card tone-${tone}`}>
@@ -682,7 +695,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v1.1</span>
+            <span>CMS Console v1.4</span>
           </div>
         </div>
 
@@ -704,8 +717,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>D1 API 연결 준비</strong>
-          <span>서버 연결 전에는 localStorage 유지</span>
+          <strong>Player API 연결 준비</strong>
+          <span>다음 단계: R2 업로드 연결</span>
         </div>
       </aside>
 
@@ -740,8 +753,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.3부터 D1 서버 DB 연결 준비가 들어갔습니다.</strong>
-                <p>D1 바인딩이 완료되면 업체/콘텐츠/단말기가 Cloudflare 서버 DB에 저장됩니다. 연결 전에는 브라우저 저장 모드로 유지됩니다.</p>
+                <strong>v1.4부터 Player용 playlist API가 추가되었습니다.</strong>
+                <p>이제 TV Player가 /api/playlist와 /api/player-config를 통해 CMS의 D1 데이터를 읽을 수 있는 구조입니다.</p>
               </div>
             </div>
 
@@ -967,7 +980,7 @@ function App() {
           <section className="page">
             <SectionTitle
               title="플레이리스트"
-              desc="선택 업체 기준 좌측 콘텐츠와 공통 우측 콘텐츠를 확인합니다."
+              desc="선택 업체 기준 좌측 콘텐츠와 공통 우측 콘텐츠를 확인하고, Player API를 테스트합니다."
               action={
                 <select value={selectedStore} onChange={(event) => setSelectedStore(event.target.value)}>
                   {stores.map((store) => (
@@ -976,6 +989,61 @@ function App() {
                 </select>
               }
             />
+
+            <div className="notice-card">
+              <PlayCircle size={20} />
+              <div>
+                <strong>이제 Player가 CMS 데이터를 읽을 수 있는 API가 생겼습니다.</strong>
+                <p>좌측 API는 업체별 콘텐츠, 우측 API는 공통 콘텐츠를 반환합니다. 다음 단계에서 실제 Player 화면과 연결합니다.</p>
+              </div>
+            </div>
+
+            <div className="api-link-grid">
+              <div className="panel api-panel">
+                <h3>좌측 70% Playlist API</h3>
+                <code>{makePlaylistApiUrl(selectedStore, 'left')}</code>
+                <div className="button-row">
+                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'left'))}>
+                    <Copy size={14} />
+                    복사
+                  </button>
+                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'left')} target="_blank" rel="noreferrer">
+                    <ExternalLink size={14} />
+                    열기
+                  </a>
+                </div>
+              </div>
+
+              <div className="panel api-panel">
+                <h3>우측 30% Playlist API</h3>
+                <code>{makePlaylistApiUrl(selectedStore, 'right')}</code>
+                <div className="button-row">
+                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'right'))}>
+                    <Copy size={14} />
+                    복사
+                  </button>
+                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'right')} target="_blank" rel="noreferrer">
+                    <ExternalLink size={14} />
+                    열기
+                  </a>
+                </div>
+              </div>
+
+              <div className="panel api-panel wide">
+                <h3>Player 전체 설정 API</h3>
+                <code>{makePlayerConfigUrl(selectedStore)}</code>
+                <div className="button-row">
+                  <button className="mini-btn" onClick={() => handleCopy(makePlayerConfigUrl(selectedStore))}>
+                    <Copy size={14} />
+                    복사
+                  </button>
+                  <a className="mini-btn" href={makePlayerConfigUrl(selectedStore)} target="_blank" rel="noreferrer">
+                    <ExternalLink size={14} />
+                    열기
+                  </a>
+                </div>
+              </div>
+            </div>
 
             <div className="playlist-layout">
               <div className="panel">

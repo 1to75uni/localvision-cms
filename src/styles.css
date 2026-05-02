@@ -945,3 +945,35 @@ tbody tr:hover,
   color: #3730a3;
   border-color: #c7d2fe;
 }
+
+
+/* v1.4 player playlist API */
+.api-link-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.api-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.api-panel code {
+  display: block;
+  line-height: 1.5;
+}
+
+.api-panel.wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 980px) {
+  .api-link-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-panel.wide {
+    grid-column: auto;
+  }
+}
