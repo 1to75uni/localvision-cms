@@ -252,6 +252,7 @@ function App() {
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState('')
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
+  const [serverStatus, setServerStatus] = useState('checking')
 
   const [newStore, setNewStore] = useState({
     name: '',
@@ -279,6 +280,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   }, [data])
+
+  useEffect(() => {
+    loadServerData(false)
+  }, [])
 
   useEffect(() => {
     setNewDevice((prev) => ({ ...prev, store: selectedStore }))
@@ -325,6 +330,46 @@ function App() {
   const selectedDeviceRightContents = contents.filter((content) => content.side === 'right')
   const currentLeftContent = selectedDeviceLeftContents[0]
   const currentRightContent = selectedDeviceRightContents[0]
+
+  async function apiRequest(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        'content-type': 'application/json',
+        ...(options.headers || {}),
+      },
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `API error: ${response.status}`)
+    }
+
+    return payload
+  }
+
+  async function loadServerData(showMessage = true) {
+    try {
+      const payload = await apiRequest('/api/backup')
+      setData((prev) => ({
+        ...prev,
+        stores: Array.isArray(payload.stores) ? payload.stores : prev.stores,
+        contents: Array.isArray(payload.contents) ? payload.contents : prev.contents,
+        devices: Array.isArray(payload.devices) ? payload.devices : prev.devices,
+      }))
+      setServerStatus('connected')
+      if (showMessage) showToast('D1 서버 데이터를 불러왔습니다.')
+    } catch (error) {
+      setServerStatus('local')
+      if (showMessage) showToast('서버 연결 전입니다. 브라우저 저장 모드로 유지됩니다.')
+    }
+  }
+
+  function sendToServer(path, options = {}) {
+    apiRequest(path, options)
+      .then(() => setServerStatus('connected'))
+      .catch(() => setServerStatus('local'))
+  }
 
   function updateData(patch) {
     setData((prev) => ({ ...prev, ...patch }))
@@ -376,6 +421,15 @@ function App() {
       devices: [nextDevice, ...devices],
     })
 
+    sendToServer('/api/stores', {
+      method: 'POST',
+      body: JSON.stringify(nextStore),
+    })
+    sendToServer('/api/devices', {
+      method: 'POST',
+      body: JSON.stringify(nextDevice),
+    })
+
     setSelectedStore(slug)
     setNewStore({ name: '', slug: '', category: '', address: '', contact: '' })
     showToast('업체와 기본 TV 단말기가 저장되었습니다.')
@@ -393,6 +447,10 @@ function App() {
       stores: nextStores,
       contents: nextContents,
       devices: nextDevices,
+    })
+
+    sendToServer(`/api/stores?slug=${encodeURIComponent(slug)}`, {
+      method: 'DELETE',
     })
 
     setSelectedStore(nextStores[0]?.slug || '')
@@ -424,12 +482,19 @@ function App() {
     }
 
     updateData({ contents: [nextContent, ...contents] })
+    sendToServer('/api/contents', {
+      method: 'POST',
+      body: JSON.stringify(nextContent),
+    })
     setNewContent({ title: '', side: 'left', type: 'image', duration: 10, fileName: '' })
     showToast('콘텐츠가 저장되었습니다.')
   }
 
   function handleDeleteContent(id) {
     updateData({ contents: contents.filter((content) => content.id !== id) })
+    sendToServer(`/api/contents?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
     showToast('콘텐츠가 삭제되었습니다.')
   }
 
@@ -451,21 +516,35 @@ function App() {
     }
 
     updateData({ devices: [nextDevice, ...devices] })
+    sendToServer('/api/devices', {
+      method: 'POST',
+      body: JSON.stringify(nextDevice),
+    })
     setNewDevice({ name: '', store: selectedStore, app: 'Player Web', deviceCode: '' })
     showToast('단말기가 저장되었습니다.')
   }
 
   function toggleDeviceOnline(id) {
+    const target = devices.find((device) => device.id === id)
+    if (!target) return
+
+    const updated = {
+      ...target,
+      online: !target.online,
+      lastSeen: !target.online ? '방금 전' : '오프라인 전환',
+    }
+
     updateData({
-      devices: devices.map((device) =>
-        device.id === id
-          ? {
-              ...device,
-              online: !device.online,
-              lastSeen: !device.online ? '방금 전' : '오프라인 전환',
-            }
-          : device
-      ),
+      devices: devices.map((device) => (device.id === id ? updated : device)),
+    })
+
+    sendToServer('/api/devices', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        id,
+        online: updated.online,
+        lastSeen: updated.lastSeen,
+      }),
     })
   }
 
@@ -482,6 +561,16 @@ function App() {
           : device
       ),
     })
+
+    sendToServer('/api/devices', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        id: deviceId,
+        lastCommand: 'refresh',
+        commandAt: now,
+      }),
+    })
+
     showToast('새로고침 요청을 기록했습니다. 다음 단계에서 실제 TV 명령으로 연결합니다.')
   }
 
@@ -615,8 +704,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>CMS 저장 기능 추가</strong>
-          <span>브라우저 localStorage 저장 방식</span>
+          <strong>D1 API 연결 준비</strong>
+          <span>서버 연결 전에는 localStorage 유지</span>
         </div>
       </aside>
 
@@ -627,9 +716,12 @@ function App() {
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
-            <button className="ghost-btn" onClick={() => showToast('현재는 샘플 상태 새로고침입니다.')}>
+            <span className={`server-chip ${serverStatus}`}>
+              {serverStatus === 'connected' ? 'D1 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '브라우저 저장 모드'}
+            </span>
+            <button className="ghost-btn" onClick={() => loadServerData(true)}>
               <RefreshCw size={16} />
-              상태 새로고침
+              서버 데이터 새로고침
             </button>
             <a className="primary-btn" href={makePlayerUrl(selectedStore, settings)} target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
@@ -648,8 +740,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.1부터 저장 기능이 들어갔습니다.</strong>
-                <p>업체/콘텐츠/단말기를 추가하면 이 브라우저에 저장됩니다. 새로고침해도 유지됩니다.</p>
+                <strong>v1.3부터 D1 서버 DB 연결 준비가 들어갔습니다.</strong>
+                <p>D1 바인딩이 완료되면 업체/콘텐츠/단말기가 Cloudflare 서버 DB에 저장됩니다. 연결 전에는 브라우저 저장 모드로 유지됩니다.</p>
               </div>
             </div>
 
