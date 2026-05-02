@@ -1,6 +1,6 @@
 # LocalVision CMS
 
-LocalVision CMS v1.3 입니다.
+LocalVision CMS v1.3.1 입니다.
 
 ## v1.3 추가 기능
 - Cloudflare Pages Functions API 추가
