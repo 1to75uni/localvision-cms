@@ -244,6 +244,7 @@ function makePlayerUrl(slug, settings, deviceId = '') {
     bundleMode: 'cache',
     cacheAll: '1',
     videoMode: 'cache',
+    cacheVia: 'api',
     activateWhenCached: '1',
     fit: 'cover',
   })
@@ -873,7 +874,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v2.2</span>
+            <span>CMS Console v2.3</span>
           </div>
         </div>
 
@@ -895,8 +896,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>오프라인 번들 캐시 적용</strong>
-          <span>Player v1.4 오프라인 번들</span>
+          <strong>API 미디어 캐시 적용</strong>
+          <span>Player v1.4.1 API 미디어 캐시</span>
         </div>
       </aside>
 
@@ -931,7 +932,7 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v2.1에서 Player v1.4 오프라인 번들 옵션을 TV 설치용 URL에 적용했습니다.</strong>
+                <strong>v2.1에서 Player v1.4.1 API 미디어 캐시 옵션을 TV 설치용 URL에 적용했습니다.</strong>
                 <p>영상과 이미지를 1시간 단위로 전체 다운로드하고, 다운로드 완료된 묶음만 TV에 적용하는 설정이 자동으로 붙습니다.</p>
               </div>
             </div>
