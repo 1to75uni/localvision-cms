@@ -1,36 +1,28 @@
-# LocalVision CMS
+# LocalVision CMS v1.8
 
-LocalVision CMS v1.5.1 입니다.
+v1.7 콘텐츠 폴리싱과 v1.8 운영 개선을 합친 버전입니다.
 
-## v1.5 추가 기능
-- CMS에서 이미지/영상 파일 업로드
-- Cloudflare R2 저장소 업로드 API 추가
-- 업로드 성공 시 D1 contents 테이블에 자동 저장
-- `/api/upload` 파일 업로드
-- `/api/media?key=...` R2 비공개 버킷 미디어 프록시
-- R2 Public Base URL이 있으면 공개 URL 자동 생성
-- 콘텐츠 관리 화면에서 파일 선택 UI 추가
-- Player playlist API에서 실제 미디어 URL 반환
+## v1.7 반영 사항
+- 영상 선택 시 재생시간(초) 입력칸 숨김
+- 영상 카드에서는 초 표시 제거
+- 이미지일 때만 재생시간 표시
+- 콘텐츠 관리 화면 좌측/우측 탭 분리
+- 콘텐츠 카드에 썸네일/미리보기 표시
+- 콘텐츠 사용중/중지 버튼 추가
+- Player URL 문구를 TV 설치용 URL로 변경
+- API/D1/R2 등 개발자 용어 일부 완화
 
-## Cloudflare Pages 설정
-- Framework preset: Vite
-- Build command: npm run build
-- Build output directory: dist
+## v1.8 반영 사항
+- 콘텐츠 순서 변경 버튼 추가
+- 대시보드에 오프라인 TV 목록 표시
+- 업체 상세 요약 카드 추가
+- 단말기 상태 상세 정보 정리
+- 콘텐츠 삭제 확인 문구 강화
+- 저장 위치와 현재 선택 업체 안내 개선
 
 ## 필요한 바인딩
-Cloudflare Pages 프로젝트 Settings > Bindings에 아래를 추가해야 합니다.
-
-### D1
-- Variable name: DB
-- D1 database: localvision-cms-db
-
-### R2
-- Variable name: MEDIA
-- R2 bucket: localvision-media-ujb 또는 안준님이 사용하는 미디어 버킷
+- D1: DB
+- R2: MEDIA
 
 ## 선택 환경변수
-Cloudflare Pages 프로젝트 Settings > Variables and Secrets에 아래를 추가할 수 있습니다.
-
-- R2_PUBLIC_BASE = R2 공개 주소 예: https://pub-xxxxx.r2.dev
-
-R2_PUBLIC_BASE가 없으면 `/api/media?key=...` 프록시 URL을 사용합니다.
+- R2_PUBLIC_BASE

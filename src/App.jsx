@@ -28,6 +28,10 @@ import {
   Send,
   Clock3,
   FileText,
+  ArrowUp,
+  ArrowDown,
+  PauseCircle,
+  EyeOff,
 } from 'lucide-react'
 
 const STORAGE_KEY = 'localvision-cms-v1-1'
@@ -264,6 +268,7 @@ function App() {
   const [selectedStore, setSelectedStore] = useState(data.stores[0]?.slug || 'goobne')
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState('')
+  const [contentTab, setContentTab] = useState('left')
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
   const [serverStatus, setServerStatus] = useState('checking')
 
@@ -332,10 +337,14 @@ function App() {
     }
   }, [stores, devices, contents])
 
-  const leftContents = contents.filter(
-    (content) => content.side === 'left' && content.store === selectedStore
-  )
-  const rightContents = contents.filter((content) => content.side === 'right')
+  const leftContents = contents
+    .filter((content) => content.side === 'left' && content.store === selectedStore)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  const rightContents = contents
+    .filter((content) => content.side === 'right')
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+  const contentManageContents = contentTab === 'left' ? leftContents : rightContents
+  const offlineDevices = devices.filter((device) => !device.online)
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
   const selectedDeviceStore = stores.find((store) => store.slug === selectedDevice?.store)
@@ -391,6 +400,77 @@ function App() {
 
   function updateData(patch) {
     setData((prev) => ({ ...prev, ...patch }))
+  }
+
+  function contentDurationText(content) {
+    if (content.type === 'video') return '영상 길이대로 재생'
+    return `재생 ${content.duration || 10}초`
+  }
+
+  function getContentLocation(content) {
+    return content.side === 'right'
+      ? 'stores/_common/right'
+      : `stores/${content.store}/left`
+  }
+
+  function buildContentPreview(content) {
+    if (content?.url) return content.url
+    return ''
+  }
+
+  function handleToggleContentStatus(id) {
+    const target = contents.find((content) => content.id === id)
+    if (!target) return
+
+    const nextStatus = target.status === '사용중' ? '중지' : '사용중'
+    const updated = { ...target, status: nextStatus }
+
+    updateData({
+      contents: contents.map((content) => (content.id === id ? updated : content)),
+    })
+
+    sendToServer('/api/contents', {
+      method: 'POST',
+      body: JSON.stringify(updated),
+    })
+
+    showToast(`콘텐츠가 ${nextStatus} 상태로 변경되었습니다.`)
+  }
+
+  function handleMoveContent(id, direction) {
+    const target = contents.find((content) => content.id === id)
+    if (!target) return
+
+    const group = contents
+      .filter((content) =>
+        target.side === 'right'
+          ? content.side === 'right'
+          : content.side === 'left' && content.store === target.store
+      )
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+
+    const index = group.findIndex((content) => content.id === id)
+    const swapIndex = direction === 'up' ? index - 1 : index + 1
+    if (swapIndex < 0 || swapIndex >= group.length) return
+
+    const a = group[index]
+    const b = group[swapIndex]
+    const aOrder = Number(a.sortOrder || index + 1)
+    const bOrder = Number(b.sortOrder || swapIndex + 1)
+
+    const updatedA = { ...a, sortOrder: bOrder }
+    const updatedB = { ...b, sortOrder: aOrder }
+
+    const nextContents = contents.map((content) => {
+      if (content.id === updatedA.id) return updatedA
+      if (content.id === updatedB.id) return updatedB
+      return content
+    })
+
+    updateData({ contents: nextContents })
+    sendToServer('/api/contents', { method: 'POST', body: JSON.stringify(updatedA) })
+    sendToServer('/api/contents', { method: 'POST', body: JSON.stringify(updatedB) })
+    showToast('콘텐츠 순서를 변경했습니다.')
   }
 
   function handleAddStore() {
@@ -492,7 +572,7 @@ function App() {
         form.append('title', newContent.title.trim())
         form.append('side', side)
         form.append('store', selectedStore)
-        form.append('duration', String(Number(newContent.duration) || 10))
+        form.append('duration', newContent.type === 'video' ? '0' : String(Number(newContent.duration) || 10))
 
         const payload = await apiRequest('/api/upload', {
           method: 'POST',
@@ -527,10 +607,11 @@ function App() {
       side,
       type: newContent.type,
       title: newContent.title.trim(),
-      duration: Number(newContent.duration) || 10,
+      duration: newContent.type === 'video' ? 0 : (Number(newContent.duration) || 10),
       status: '사용중',
       fileName,
       url: '',
+      sortOrder: contents.filter((item) => item.side === side && item.store === store).length + 1,
       updatedAt: getToday(),
     }
 
@@ -545,6 +626,13 @@ function App() {
   }
 
   function handleDeleteContent(id) {
+    const target = contents.find((content) => content.id === id)
+    if (!target) return
+
+    if (!confirm(`정말 삭제하시겠습니까?\n\n${target.title}\n이 콘텐츠는 TV 재생목록에서 제거됩니다.`)) {
+      return
+    }
+
     updateData({ contents: contents.filter((content) => content.id !== id) })
     sendToServer(`/api/contents?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -736,7 +824,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v1.5</span>
+            <span>CMS Console v1.8</span>
           </div>
         </div>
 
@@ -758,8 +846,8 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>R2 업로드 연결</strong>
-          <span>다음 단계: Player 실제 재생 연결</span>
+          <strong>운영 화면 개선</strong>
+          <span>실사용 CMS 폴리싱</span>
         </div>
       </aside>
 
@@ -779,7 +867,7 @@ function App() {
             </button>
             <a className="primary-btn" href={makePlayerUrl(selectedStore, settings)} target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
-              플레이어 미리보기
+              TV 화면 미리보기
             </a>
           </div>
         </header>
@@ -794,8 +882,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.5부터 이미지/영상 업로드 기능이 추가되었습니다.</strong>
-                <p>파일을 선택해 콘텐츠를 저장하면 R2에 업로드되고, D1에는 콘텐츠 정보와 미디어 URL이 기록됩니다.</p>
+                <strong>v1.8에서 실사용 운영 화면을 보강했습니다.</strong>
+                <p>콘텐츠 탭 분리, 영상 재생시간 숨김, 사용중/중지, 순서 변경, 오프라인 TV 확인 기능이 추가되었습니다.</p>
               </div>
             </div>
 
@@ -810,9 +898,9 @@ function App() {
               <div className="panel">
                 <h3>오늘의 운영 체크</h3>
                 <div className="check-list">
-                  <div><CheckCircle2 size={18} /> 업체 생성 후 브라우저 저장</div>
-                  <div><CheckCircle2 size={18} /> 콘텐츠 목록 브라우저 저장</div>
-                  <div><CheckCircle2 size={18} /> TV 단말기 상태 샘플 관리</div>
+                  <div><CheckCircle2 size={18} /> 업체 생성 후 서버/브라우저 저장</div>
+                  <div><CheckCircle2 size={18} /> 콘텐츠 업로드 및 R2 저장</div>
+                  <div><CheckCircle2 size={18} /> TV 단말기 상태 확인</div>
                   <div><CheckCircle2 size={18} /> JSON 백업 다운로드 지원</div>
                 </div>
               </div>
@@ -825,8 +913,36 @@ function App() {
                   <code>{currentStore?.slug}</code>
                   <button onClick={() => handleCopy(makePlayerUrl(currentStore?.slug, settings))}>
                     <Copy size={15} />
-                    Player URL 복사
+                    TV 설치용 URL 복사
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="dashboard-grid">
+              <div className="panel">
+                <h3>오프라인 TV 확인</h3>
+                {offlineDevices.length === 0 && <p className="empty-text">현재 오프라인 TV가 없습니다.</p>}
+                {offlineDevices.map((device) => {
+                  const store = stores.find((item) => item.slug === device.store)
+                  return (
+                    <div className="offline-row" key={device.id}>
+                      <WifiOff size={18} />
+                      <div>
+                        <strong>{device.name}</strong>
+                        <span>{store?.name || device.store} · 마지막 접속 {device.lastSeen}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="panel">
+                <h3>선택 업체 요약</h3>
+                <div className="store-summary-list">
+                  <div><span>좌측 콘텐츠</span><strong>{leftContents.length}개</strong></div>
+                  <div><span>공통 우측 콘텐츠</span><strong>{rightContents.length}개</strong></div>
+                  <div><span>연결 TV</span><strong>{devices.filter((device) => device.store === selectedStore).length}대</strong></div>
                 </div>
               </div>
             </div>
@@ -936,7 +1052,7 @@ function App() {
           <section className="page">
             <SectionTitle
               title="콘텐츠 관리"
-              desc="좌측 70% 매장 콘텐츠와 우측 30% 공통 콘텐츠를 구분해서 관리합니다."
+              desc="좌측 70% 매장 콘텐츠와 우측 30% 공통 콘텐츠를 탭으로 나누어 관리합니다."
               action={
                 <select value={selectedStore} onChange={(event) => setSelectedStore(event.target.value)}>
                   {stores.map((store) => (
@@ -946,76 +1062,163 @@ function App() {
               }
             />
 
-            <div className="form-card">
-              <h3>새 콘텐츠 추가</h3>
-              <div className="form-grid content-form upload-form">
-                <input
-                  placeholder="콘텐츠 제목 예: 대표메뉴 영상"
-                  value={newContent.title}
-                  onChange={(event) => setNewContent({ ...newContent, title: event.target.value })}
-                />
-                <select
-                  value={newContent.side}
-                  onChange={(event) => setNewContent({ ...newContent, side: event.target.value })}
-                >
-                  <option value="left">좌측 70% 매장 콘텐츠</option>
-                  <option value="right">우측 30% 공통 콘텐츠</option>
-                </select>
-                <select
-                  value={newContent.type}
-                  onChange={(event) => setNewContent({ ...newContent, type: event.target.value })}
-                >
-                  <option value="image">이미지</option>
-                  <option value="video">영상</option>
-                </select>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="재생 시간"
-                  value={newContent.duration}
-                  onChange={(event) => setNewContent({ ...newContent, duration: event.target.value })}
-                />
-                <input
-                  placeholder="파일명만 저장할 때 예: left_1.mp4"
-                  value={newContent.fileName}
-                  onChange={(event) => setNewContent({ ...newContent, fileName: event.target.value })}
-                />
-                <label className="file-picker">
-                  <UploadCloud size={16} />
-                  <span>{uploadFile ? uploadFile.name : '이미지/영상 파일 선택'}</span>
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0]
-                      setUploadFile(file || null)
-                      if (file?.type?.startsWith('video/')) {
-                        setNewContent((prev) => ({ ...prev, type: 'video' }))
-                      }
-                      if (file?.type?.startsWith('image/')) {
-                        setNewContent((prev) => ({ ...prev, type: 'image' }))
-                      }
-                    }}
-                  />
-                </label>
+            <div className="notice-card content-rule-card">
+              <UploadCloud size={20} />
+              <div>
+                <strong>현재 선택 업체: {currentStore?.name}</strong>
+                <p>
+                  좌측 70% 콘텐츠는 <b>{currentStore?.name}</b>에만 저장됩니다.
+                  우측 30% 콘텐츠는 모든 매장에서 함께 쓰는 공통 콘텐츠입니다.
+                  이미지는 재생시간이 필요하고, 영상은 영상 길이대로 재생됩니다.
+                </p>
               </div>
-              <button className="primary-btn" onClick={handleAddContent} disabled={isUploading}>
-                <Save size={16} />
-                {isUploading ? '업로드 중...' : uploadFile ? 'R2 업로드 + 콘텐츠 저장' : '콘텐츠 정보 저장'}
+            </div>
+
+            <div className="content-summary-grid">
+              <button className={`mini-summary left ${contentTab === 'left' ? 'active' : ''}`} onClick={() => setContentTab('left')}>
+                <span>좌측 70% 매장 콘텐츠</span>
+                <strong>{leftContents.length}개</strong>
+                <p>{currentStore?.slug}/left</p>
+              </button>
+              <button className={`mini-summary right ${contentTab === 'right' ? 'active' : ''}`} onClick={() => setContentTab('right')}>
+                <span>우측 30% 공통 콘텐츠</span>
+                <strong>{rightContents.length}개</strong>
+                <p>_common/right</p>
               </button>
             </div>
 
+            <div className="form-card">
+              <h3>새 콘텐츠 추가</h3>
+              <div className="form-grid content-form upload-form labeled-form">
+                <label>
+                  <span>콘텐츠 제목</span>
+                  <input
+                    placeholder="예: 대표메뉴 영상"
+                    value={newContent.title}
+                    onChange={(event) => setNewContent({ ...newContent, title: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>노출 위치</span>
+                  <select
+                    value={newContent.side}
+                    onChange={(event) => {
+                      setNewContent({ ...newContent, side: event.target.value })
+                      setContentTab(event.target.value)
+                    }}
+                  >
+                    <option value="left">좌측 70% - 현재 선택 업체</option>
+                    <option value="right">우측 30% - 전체 공통</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>콘텐츠 종류</span>
+                  <select
+                    value={newContent.type}
+                    onChange={(event) => setNewContent({ ...newContent, type: event.target.value })}
+                  >
+                    <option value="image">이미지</option>
+                    <option value="video">영상</option>
+                  </select>
+                </label>
+
+                {newContent.type === 'image' && (
+                  <label>
+                    <span>재생시간(초)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="예: 10"
+                      value={newContent.duration}
+                      onChange={(event) => setNewContent({ ...newContent, duration: event.target.value })}
+                    />
+                  </label>
+                )}
+
+                <label>
+                  <span>파일명 직접 입력 선택사항</span>
+                  <input
+                    placeholder="예: left_1.jpg"
+                    value={newContent.fileName}
+                    onChange={(event) => setNewContent({ ...newContent, fileName: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>파일 선택</span>
+                  <div className="file-picker">
+                    <UploadCloud size={16} />
+                    <span>{uploadFile ? uploadFile.name : '이미지/영상 파일 선택'}</span>
+                    <input
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0]
+                        setUploadFile(file || null)
+                        if (file?.type?.startsWith('video/')) {
+                          setNewContent((prev) => ({ ...prev, type: 'video' }))
+                        }
+                        if (file?.type?.startsWith('image/')) {
+                          setNewContent((prev) => ({ ...prev, type: 'image' }))
+                        }
+                      }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div className="upload-destination">
+                저장 위치:
+                <code>
+                  {newContent.side === 'right'
+                    ? 'stores/_common/right'
+                    : `stores/${selectedStore}/left`}
+                </code>
+                <span>{newContent.type === 'video' ? '영상은 끝까지 재생됩니다.' : `이미지는 ${newContent.duration || 10}초 동안 재생됩니다.`}</span>
+              </div>
+
+              <button className="primary-btn" onClick={handleAddContent} disabled={isUploading}>
+                <Save size={16} />
+                {isUploading ? '업로드 중...' : uploadFile ? '파일 업로드 + 콘텐츠 저장' : '콘텐츠 정보 저장'}
+              </button>
+            </div>
+
+            <div className="content-list-header">
+              <div>
+                <h3>
+                  {contentTab === 'left'
+                    ? `${currentStore?.name} 좌측 70% 콘텐츠`
+                    : '우측 30% 공통 콘텐츠'}
+                </h3>
+                <p>
+                  {contentTab === 'left'
+                    ? '현재 선택 업체에만 나가는 콘텐츠입니다.'
+                    : '모든 매장 TV 오른쪽 30%에 공통으로 나가는 콘텐츠입니다.'}
+                </p>
+              </div>
+            </div>
+
             <div className="cards-grid">
-              {contents.map((content) => {
+              {contentManageContents.map((content, index) => {
                 const Icon = content.type === 'video' ? Film : Image
+                const preview = buildContentPreview(content)
                 const storeName = content.store === '_common'
                   ? '공통 우측'
                   : stores.find((store) => store.slug === content.store)?.name || content.store
+                const location = getContentLocation(content)
 
                 return (
-                  <article className="content-card" key={content.id}>
-                    <div className="media-thumb">
-                      <Icon size={26} />
+                  <article className={`content-card polished ${content.status === '중지' ? 'paused' : ''}`} key={content.id}>
+                    <div className="media-thumb preview-thumb">
+                      {preview ? (
+                        content.type === 'video'
+                          ? <video src={preview} muted playsInline preload="metadata" />
+                          : <img src={preview} alt={content.title} />
+                      ) : (
+                        <Icon size={26} />
+                      )}
                     </div>
                     <div>
                       <div className="card-row">
@@ -1023,16 +1226,37 @@ function App() {
                         <StatusBadge status={content.status} />
                       </div>
                       <h3>{content.title}</h3>
-                      <p>{storeName} · {content.duration}초 · {content.fileName} · {content.updatedAt}</p>
+                      <p>{storeName} · {content.type === 'video' ? '영상' : '이미지'} · {contentDurationText(content)} · {content.fileName}</p>
+                      <p className="content-location">저장 위치: {location}</p>
                       {content.url && <a className="media-link" href={content.url} target="_blank" rel="noreferrer">미디어 열기</a>}
                     </div>
-                    <button className="icon-btn" onClick={() => handleDeleteContent(content.id)}>
-                      <Trash2 size={15} />
-                    </button>
+
+                    <div className="content-card-actions">
+                      <button className="mini-icon-btn" title="위로" onClick={() => handleMoveContent(content.id, 'up')} disabled={index === 0}>
+                        <ArrowUp size={14} />
+                      </button>
+                      <button className="mini-icon-btn" title="아래로" onClick={() => handleMoveContent(content.id, 'down')} disabled={index === contentManageContents.length - 1}>
+                        <ArrowDown size={14} />
+                      </button>
+                      <button className="mini-icon-btn" title={content.status === '사용중' ? '중지' : '사용'} onClick={() => handleToggleContentStatus(content.id)}>
+                        {content.status === '사용중' ? <PauseCircle size={14} /> : <CheckCircle2 size={14} />}
+                      </button>
+                      <button className="mini-icon-btn danger" title="삭제" onClick={() => handleDeleteContent(content.id)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </article>
                 )
               })}
             </div>
+
+            {contentManageContents.length === 0 && (
+              <div className="empty-panel">
+                {contentTab === 'left'
+                  ? '현재 선택 업체의 좌측 콘텐츠가 없습니다.'
+                  : '공통 우측 콘텐츠가 없습니다.'}
+              </div>
+            )}
           </section>
         )}
 
@@ -1090,7 +1314,7 @@ function App() {
               </div>
 
               <div className="panel api-panel wide">
-                <h3>Player 전체 설정 API</h3>
+                <h3>TV 화면 연동 주소</h3>
                 <code>{makePlayerConfigUrl(selectedStore)}</code>
                 <div className="button-row">
                   <button className="mini-btn" onClick={() => handleCopy(makePlayerConfigUrl(selectedStore))}>
@@ -1114,7 +1338,7 @@ function App() {
                     <span>{index + 1}</span>
                     <PlayCircle size={18} />
                     <strong>{content.title}</strong>
-                    <em>{content.duration}초</em>
+                    <em>{content.type === 'video' ? '영상' : `${content.duration}초`}</em>
                   </div>
                 ))}
               </div>
@@ -1127,7 +1351,7 @@ function App() {
                     <span>{index + 1}</span>
                     <PlayCircle size={18} />
                     <strong>{content.title}</strong>
-                    <em>{content.duration}초</em>
+                    <em>{content.type === 'video' ? '영상' : `${content.duration}초`}</em>
                   </div>
                 ))}
               </div>
@@ -1236,11 +1460,11 @@ function App() {
                   <div className="button-row">
                     <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings))}>
                       <Copy size={16} />
-                      Player URL 복사
+                      TV 설치용 URL 복사
                     </button>
                     <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings)} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} />
-                      Player 열기
+                      TV 화면 열기
                     </a>
                     <button className="primary-btn" onClick={() => handleRemoteRefresh(selectedDevice.id)}>
                       <Send size={16} />
@@ -1311,7 +1535,7 @@ function App() {
                         <span>{index + 1}</span>
                         {content.type === 'video' ? <Film size={16} /> : <Image size={16} />}
                         <strong>{content.title}</strong>
-                        <em>{content.duration}초</em>
+                        <em>{content.type === 'video' ? '영상' : `${content.duration}초`}</em>
                       </div>
                     ))}
                   </div>
@@ -1324,7 +1548,7 @@ function App() {
                         <span>{index + 1}</span>
                         {content.type === 'video' ? <Film size={16} /> : <Image size={16} />}
                         <strong>{content.title}</strong>
-                        <em>{content.duration}초</em>
+                        <em>{content.type === 'video' ? '영상' : `${content.duration}초`}</em>
                       </div>
                     ))}
                   </div>
@@ -1350,7 +1574,7 @@ function App() {
                 />
               </div>
               <div className="panel">
-                <h3>기본 Player 주소</h3>
+                <h3>기본 TV 화면 주소</h3>
                 <input
                   value={settings.playerBase}
                   onChange={(event) => handleUpdateSetting('playerBase', event.target.value)}
