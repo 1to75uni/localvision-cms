@@ -68,3 +68,42 @@ VALUES
 ('dv_001', 'goobne', '굽네치킨 TV 1', 'tv', 1, '방금 전', 'Player Web', 'LV-GOOBNE-01', '2026-05-02'),
 ('dv_002', 'sbflower', '샛별플라워 TV 1', 'tv', 0, '37분 전', 'Fully Kiosk', 'LV-SBFLOWER-01', '2026-05-02'),
 ('dv_003', 'areumcafe', '아름드리 카페 TV 1', 'tv', 1, '1분 전', 'Android TV App', 'LV-AREUM-01', '2026-05-02');
+
+-- Player error logs reported by LocalVision Player
+CREATE TABLE IF NOT EXISTS player_errors (
+  id TEXT PRIMARY KEY,
+  store TEXT DEFAULT '',
+  device_id TEXT DEFAULT '',
+  error_code TEXT NOT NULL,
+  level TEXT DEFAULT 'error',
+  message TEXT NOT NULL,
+  href TEXT DEFAULT '',
+  user_agent TEXT DEFAULT '',
+  extra_json TEXT DEFAULT '',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_player_errors_device_created ON player_errors(device_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at);
+
+-- Fullscreen notices per store
+CREATE TABLE IF NOT EXISTS notices (
+  id TEXT PRIMARY KEY,
+  store TEXT NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('image', 'video', 'link', 'text')),
+  message TEXT DEFAULT '',
+  media_url TEXT DEFAULT '',
+  link_url TEXT DEFAULT '',
+  file_name TEXT DEFAULT '',
+  start_at TEXT DEFAULT '',
+  end_at TEXT DEFAULT '',
+  display_mode TEXT DEFAULT 'fullscreen',
+  priority TEXT DEFAULT 'normal',
+  duration_sec INTEGER DEFAULT 15,
+  repeat_mode TEXT DEFAULT 'always',
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notices_store_active ON notices(store, is_active);
+CREATE INDEX IF NOT EXISTS idx_notices_time ON notices(start_at, end_at);

@@ -101,6 +101,28 @@ function mapDevice(row, env, nowMs = Date.now()) {
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
 
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS notices (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('image', 'video', 'link', 'text')),
+      message TEXT DEFAULT '',
+      media_url TEXT DEFAULT '',
+      link_url TEXT DEFAULT '',
+      file_name TEXT DEFAULT '',
+      start_at TEXT DEFAULT '',
+      end_at TEXT DEFAULT '',
+      display_mode TEXT DEFAULT 'fullscreen',
+      priority TEXT DEFAULT 'normal',
+      duration_sec INTEGER DEFAULT 15,
+      repeat_mode TEXT DEFAULT 'always',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run()
+
   const stores = await env.DB.prepare(`
     SELECT
       id, name, slug, category, address, contact, status, plan,
@@ -120,6 +142,26 @@ export async function onRequestGet({ env }) {
     ORDER BY side ASC, sort_order ASC, updated_at DESC
   `).all()
 
+
+  const notices = await env.DB.prepare(`
+    SELECT
+      id, store, title, type, message,
+      media_url AS mediaUrl,
+      link_url AS linkUrl,
+      file_name AS fileName,
+      start_at AS startAt,
+      end_at AS endAt,
+      display_mode AS displayMode,
+      priority,
+      duration_sec AS durationSec,
+      repeat_mode AS repeatMode,
+      is_active AS isActive,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM notices
+    ORDER BY updated_at DESC
+  `).all()
+
   const devices = await env.DB.prepare(`
     SELECT
       id, store, name, role, online,
@@ -137,6 +179,11 @@ export async function onRequestGet({ env }) {
     ok: true,
     stores: stores.results || [],
     contents: contents.results || [],
+    notices: (notices.results || []).map((row) => ({
+      ...row,
+      isActive: Boolean(row.isActive),
+      durationSec: Number(row.durationSec || 15),
+    })),
     devices: (devices.results || []).map((row) => mapDevice(row, env)),
   })
 }

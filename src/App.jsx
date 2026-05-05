@@ -166,9 +166,32 @@ const sampleDevices = [
   },
 ]
 
+
+const sampleNotices = [
+  {
+    id: 'nt_001',
+    store: 'goobne',
+    title: '오늘 영업시간 안내',
+    type: 'text',
+    message: '오늘은 내부 사정으로 오후 9시에 영업을 종료합니다.',
+    mediaUrl: '',
+    linkUrl: '',
+    fileName: '',
+    startAt: '',
+    endAt: '',
+    displayMode: 'fullscreen',
+    priority: 'normal',
+    durationSec: 15,
+    repeatMode: 'always',
+    isActive: false,
+    updatedAt: '2026-05-03',
+  },
+]
+
 const initialData = {
   stores: sampleStores,
   contents: sampleContents,
+  notices: sampleNotices,
   devices: sampleDevices,
   settings: {
     playerBase: PLAYER_BASE,
@@ -177,6 +200,7 @@ const initialData = {
     restartMode: 'reload',
     restartJitterSec: '0',
     cacheMax: '20',
+    noticePollMs: '15000',
   },
 }
 
@@ -184,6 +208,7 @@ const tabs = [
   { id: 'dashboard', label: '대시보드', icon: LayoutDashboard },
   { id: 'stores', label: '업체 관리', icon: Store },
   { id: 'contents', label: '콘텐츠 관리', icon: UploadCloud },
+  { id: 'notices', label: '전체화면 공지', icon: FileText },
   { id: 'playlist', label: '플레이리스트', icon: ListVideo },
   { id: 'devices', label: '단말기 상태', icon: Monitor },
   { id: 'settings', label: '설정/백업', icon: Settings },
@@ -262,6 +287,7 @@ function loadData() {
     return {
       stores: Array.isArray(parsed.stores) ? parsed.stores : sampleStores,
       contents: Array.isArray(parsed.contents) ? parsed.contents : sampleContents,
+      notices: Array.isArray(parsed.notices) ? parsed.notices : sampleNotices,
       devices: Array.isArray(parsed.devices) ? parsed.devices : sampleDevices,
       settings: nextSettings,
     }
@@ -280,6 +306,7 @@ function makePlayerUrl(slug, settings, deviceId = '') {
     restartMode: settings.restartMode,
     restartJitterSec: settings.restartJitterSec,
     cacheMax: settings.cacheMax || '60',
+    noticePollMs: settings.noticePollMs || '15000',
     bundleMode: 'cache',
     cacheAll: '1',
     videoMode: 'cache',
@@ -345,6 +372,7 @@ function App() {
   const [contentTab, setContentTab] = useState('left')
   const [selectedDeviceId, setSelectedDeviceId] = useState(null)
   const [screenshots, setScreenshots] = useState({})
+  const [playerErrors, setPlayerErrors] = useState({})
   const [isScreenshotLoading, setIsScreenshotLoading] = useState(false)
   const [serverStatus, setServerStatus] = useState('checking')
 
@@ -365,6 +393,21 @@ function App() {
   })
   const [uploadFile, setUploadFile] = useState(null)
   const [isUploading, setIsUploading] = useState(false)
+
+  const [newNotice, setNewNotice] = useState({
+    title: '',
+    type: 'image',
+    message: '',
+    linkUrl: '',
+    mediaUrl: '',
+    startAt: '',
+    endAt: '',
+    priority: 'normal',
+    durationSec: 15,
+    isActive: true,
+  })
+  const [noticeFile, setNoticeFile] = useState(null)
+  const [isNoticeUploading, setIsNoticeUploading] = useState(false)
 
   const [newDevice, setNewDevice] = useState({
     name: '',
@@ -397,6 +440,7 @@ function App() {
   useEffect(() => {
     if (selectedDeviceId) {
       loadLatestScreenshot(selectedDeviceId)
+      loadPlayerErrors(selectedDeviceId)
     }
   }, [selectedDeviceId])
 
@@ -405,7 +449,7 @@ function App() {
     window.setTimeout(() => setToast(''), 1800)
   }
 
-  const { stores, contents, devices, settings } = data
+  const { stores, contents, notices = [], devices, settings } = data
   const currentStore = stores.find((store) => store.slug === selectedStore) || stores[0]
 
   const filteredStores = stores.filter((store) => {
@@ -417,6 +461,7 @@ function App() {
     const online = devices.filter((device) => isDeviceOnline(device)).length
     const left = contents.filter((content) => content.side === 'left').length
     const right = contents.filter((content) => content.side === 'right').length
+    const activeNotices = notices.filter((notice) => notice.isActive).length
 
     return {
       stores: stores.length,
@@ -425,8 +470,9 @@ function App() {
       offline: devices.length - online,
       left,
       right,
+      activeNotices,
     }
-  }, [stores, devices, contents, nowTick])
+  }, [stores, devices, contents, notices, nowTick])
 
   const leftContents = contents
     .filter((content) => content.side === 'left' && content.store === selectedStore)
@@ -435,10 +481,15 @@ function App() {
     .filter((content) => content.side === 'right')
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
   const contentManageContents = contentTab === 'left' ? leftContents : rightContents
+  const storeNotices = notices
+    .filter((notice) => notice.store === selectedStore || notice.store === '_all')
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
+  const activeNotice = storeNotices.find((notice) => notice.isActive)
   const offlineDevices = devices.filter((device) => !isDeviceOnline(device))
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
   const selectedScreenshot = selectedDevice ? screenshots[selectedDevice.id] : null
+  const selectedPlayerErrors = selectedDevice ? (playerErrors[selectedDevice.id] || []) : []
   const selectedDeviceStore = stores.find((store) => store.slug === selectedDevice?.store)
   const selectedDeviceLeftContents = contents.filter(
     (content) => content.side === 'left' && content.store === selectedDevice?.store
@@ -474,6 +525,7 @@ function App() {
         ...prev,
         stores: Array.isArray(payload.stores) ? payload.stores : prev.stores,
         contents: Array.isArray(payload.contents) ? payload.contents : prev.contents,
+        notices: Array.isArray(payload.notices) ? payload.notices : prev.notices,
         devices: Array.isArray(payload.devices) ? payload.devices : prev.devices,
       }))
       setServerStatus('connected')
@@ -732,6 +784,84 @@ function App() {
     showToast('콘텐츠가 삭제되었습니다.')
   }
 
+
+  async function handleAddNotice() {
+    if (!selectedStore) {
+      alert('공지 송출 업체를 선택해주세요.')
+      return
+    }
+    if (!newNotice.title.trim()) {
+      alert('공지 제목을 입력해주세요.')
+      return
+    }
+    if ((newNotice.type === 'image' || newNotice.type === 'video') && !noticeFile && !newNotice.mediaUrl.trim()) {
+      alert('이미지/영상 공지는 파일 업로드 또는 미디어 URL이 필요합니다.')
+      return
+    }
+    if (newNotice.type === 'link' && !newNotice.linkUrl.trim()) {
+      alert('링크 공지는 링크 URL을 입력해주세요.')
+      return
+    }
+
+    let uploaded = null
+    if (noticeFile) {
+      try {
+        setIsNoticeUploading(true)
+        const form = new FormData()
+        form.append('file', noticeFile)
+        form.append('store', selectedStore)
+        uploaded = await apiRequest('/api/notice-upload', { method: 'POST', body: form, headers: {} })
+      } catch (error) {
+        alert(`공지 파일 업로드 실패: ${error.message}`)
+        setIsNoticeUploading(false)
+        return
+      }
+    }
+
+    const notice = {
+      id: makeId('nt'),
+      store: selectedStore,
+      title: newNotice.title.trim(),
+      type: uploaded?.type || newNotice.type,
+      message: newNotice.message.trim(),
+      mediaUrl: uploaded?.url || newNotice.mediaUrl.trim(),
+      linkUrl: newNotice.linkUrl.trim(),
+      fileName: uploaded?.fileName || '',
+      startAt: newNotice.startAt,
+      endAt: newNotice.endAt,
+      displayMode: 'fullscreen',
+      priority: newNotice.priority,
+      durationSec: Number(newNotice.durationSec) || 15,
+      repeatMode: 'always',
+      isActive: Boolean(newNotice.isActive),
+      updatedAt: new Date().toISOString(),
+    }
+
+    updateData({ notices: [notice, ...notices.filter((item) => item.id !== notice.id)] })
+    sendToServer('/api/notices', { method: 'POST', body: JSON.stringify(notice) })
+    setNewNotice({ title: '', type: 'image', message: '', linkUrl: '', mediaUrl: '', startAt: '', endAt: '', priority: 'normal', durationSec: 15, isActive: true })
+    setNoticeFile(null)
+    setIsNoticeUploading(false)
+    showToast('전체화면 공지가 저장되었습니다.')
+  }
+
+  function handleToggleNotice(id) {
+    const target = notices.find((notice) => notice.id === id)
+    if (!target) return
+    const updated = { ...target, isActive: !target.isActive, updatedAt: new Date().toISOString() }
+    updateData({ notices: notices.map((notice) => (notice.id === id ? updated : notice)) })
+    sendToServer('/api/notices', { method: 'POST', body: JSON.stringify(updated) })
+  }
+
+  function handleDeleteNotice(id) {
+    const target = notices.find((notice) => notice.id === id)
+    if (!target) return
+    if (!confirm(`공지 삭제\n\n${target.title}\n정말 삭제하시겠습니까?`)) return
+    updateData({ notices: notices.filter((notice) => notice.id !== id) })
+    sendToServer(`/api/notices?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+    showToast('공지가 삭제되었습니다.')
+  }
+
   function handleAddDevice() {
     if (!newDevice.name.trim()) {
       alert('단말기 이름을 입력해주세요.')
@@ -853,6 +983,34 @@ function App() {
     }
   }
 
+  async function loadPlayerErrors(deviceId = selectedDevice?.id) {
+    if (!deviceId) return
+
+    try {
+      const payload = await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}&limit=20`)
+      setPlayerErrors((prev) => ({
+        ...prev,
+        [deviceId]: Array.isArray(payload.errors) ? payload.errors : [],
+      }))
+      setServerStatus('connected')
+    } catch (error) {
+      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      setServerStatus('local')
+    }
+  }
+
+  async function clearPlayerErrors(deviceId = selectedDevice?.id) {
+    if (!deviceId) return
+
+    try {
+      await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}`, { method: 'DELETE' })
+      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      showToast('오류 로그를 정리했습니다.')
+    } catch (error) {
+      showToast('오류 로그 정리에 실패했습니다.')
+    }
+  }
+
   function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight) {
     const words = String(text).split(' ')
     let line = ''
@@ -954,7 +1112,7 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS MVP</p>
+            <p className="eyebrow">LocalVision CMS Core v1</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
@@ -1360,6 +1518,232 @@ function App() {
           </section>
         )}
 
+
+        {activeTab === 'notices' && (
+          <section className="page">
+            <SectionTitle
+              title="전체화면 공지"
+              desc="업체별로 이미지·영상·링크·텍스트 공지를 등록하면 Player가 70:30 화면 위에 전체화면으로 송출합니다."
+              action={
+                <select value={selectedStore} onChange={(event) => setSelectedStore(event.target.value)}>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.slug}>{store.name}</option>
+                  ))}
+                </select>
+              }
+            />
+
+            <div className="notice-card content-rule-card">
+              <FileText size={20} />
+              <div>
+                <strong>{currentStore?.name} 전체화면 공지 관리</strong>
+                <p>
+                  활성 공지가 있으면 TV는 기존 70:30 화면을 가리고 100% 전체화면 공지를 표시합니다.
+                  링크 공지는 QR과 URL을 함께 보여주고, 이미지/영상 공지는 업로드 파일을 바로 송출합니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="notice-mode-grid">
+              <div className="panel notice-mode-card">
+                <strong>현재 활성 공지</strong>
+                {activeNotice ? (
+                  <>
+                    <h3>{activeNotice.title}</h3>
+                    <p>{activeNotice.type} · {activeNotice.priority === 'urgent' ? '긴급' : '일반'} · {activeNotice.durationSec || 15}초</p>
+                  </>
+                ) : (
+                  <p className="empty-text">현재 활성화된 공지가 없습니다.</p>
+                )}
+              </div>
+              <div className="panel notice-mode-card">
+                <strong>공지 송출 방식</strong>
+                <p>Player가 {settings.noticePollMs || 15000}ms 주기로 공지를 확인합니다.</p>
+                <p>긴급 공지는 종료 전까지 계속 표시됩니다.</p>
+              </div>
+            </div>
+
+            <div className="form-card">
+              <h3>새 전체화면 공지 등록</h3>
+              <div className="form-grid content-form upload-form labeled-form notice-form">
+                <label>
+                  <span>공지 제목</span>
+                  <input
+                    placeholder="예: 오늘 영업시간 변경 안내"
+                    value={newNotice.title}
+                    onChange={(event) => setNewNotice({ ...newNotice, title: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>공지 유형</span>
+                  <select
+                    value={newNotice.type}
+                    onChange={(event) => setNewNotice({ ...newNotice, type: event.target.value })}
+                  >
+                    <option value="image">이미지 공지</option>
+                    <option value="video">영상 공지</option>
+                    <option value="link">링크/QR 공지</option>
+                    <option value="text">텍스트 공지</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>우선순위</span>
+                  <select
+                    value={newNotice.priority}
+                    onChange={(event) => setNewNotice({ ...newNotice, priority: event.target.value })}
+                  >
+                    <option value="normal">일반 공지</option>
+                    <option value="urgent">긴급 공지</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>표시 시간(초)</span>
+                  <input
+                    type="number"
+                    min="5"
+                    value={newNotice.durationSec}
+                    onChange={(event) => setNewNotice({ ...newNotice, durationSec: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>시작 시간 선택사항</span>
+                  <input
+                    type="datetime-local"
+                    value={newNotice.startAt}
+                    onChange={(event) => setNewNotice({ ...newNotice, startAt: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>종료 시간 선택사항</span>
+                  <input
+                    type="datetime-local"
+                    value={newNotice.endAt}
+                    onChange={(event) => setNewNotice({ ...newNotice, endAt: event.target.value })}
+                  />
+                </label>
+
+                {(newNotice.type === 'image' || newNotice.type === 'video') && (
+                  <label>
+                    <span>공지 파일 업로드</span>
+                    <div className="file-picker">
+                      <UploadCloud size={16} />
+                      <span>{noticeFile ? noticeFile.name : '공지 이미지/영상 파일 선택'}</span>
+                      <input
+                        type="file"
+                        accept="image/*,video/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          setNoticeFile(file || null)
+                          if (file?.type?.startsWith('video/')) setNewNotice((prev) => ({ ...prev, type: 'video' }))
+                          if (file?.type?.startsWith('image/')) setNewNotice((prev) => ({ ...prev, type: 'image' }))
+                        }}
+                      />
+                    </div>
+                  </label>
+                )}
+
+                {(newNotice.type === 'image' || newNotice.type === 'video') && (
+                  <label>
+                    <span>미디어 URL 선택사항</span>
+                    <input
+                      placeholder="파일 업로드 대신 외부 이미지/영상 URL"
+                      value={newNotice.mediaUrl}
+                      onChange={(event) => setNewNotice({ ...newNotice, mediaUrl: event.target.value })}
+                    />
+                  </label>
+                )}
+
+                <label className="wide-label">
+                  <span>공지 문구</span>
+                  <textarea
+                    placeholder="TV에 함께 표시할 안내 문구를 입력하세요."
+                    value={newNotice.message}
+                    onChange={(event) => setNewNotice({ ...newNotice, message: event.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>링크 URL</span>
+                  <input
+                    placeholder="예: https://localvision.imweb.me"
+                    value={newNotice.linkUrl}
+                    onChange={(event) => setNewNotice({ ...newNotice, linkUrl: event.target.value })}
+                  />
+                </label>
+
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={newNotice.isActive}
+                    onChange={(event) => setNewNotice({ ...newNotice, isActive: event.target.checked })}
+                  />
+                  <span>저장 즉시 활성화</span>
+                </label>
+              </div>
+              <button className="primary-btn" onClick={handleAddNotice} disabled={isNoticeUploading}>
+                <Send size={16} />
+                {isNoticeUploading ? '공지 업로드 중...' : '전체화면 공지 저장'}
+              </button>
+            </div>
+
+            <div className="table-card">
+              <table>
+                <thead>
+                  <tr>
+                    <th>공지</th>
+                    <th>유형</th>
+                    <th>상태</th>
+                    <th>시간</th>
+                    <th>파일/링크</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {storeNotices.map((notice) => (
+                    <tr key={notice.id}>
+                      <td>
+                        <strong>{notice.title}</strong>
+                        <span>{notice.message || '문구 없음'}</span>
+                      </td>
+                      <td>{notice.type === 'image' ? '이미지' : notice.type === 'video' ? '영상' : notice.type === 'link' ? '링크' : '텍스트'}</td>
+                      <td><StatusBadge status={notice.isActive ? '사용중' : '중지'} /></td>
+                      <td>
+                        <span>{notice.startAt || '즉시'} ~ {notice.endAt || '해제 전'}</span>
+                        <span>{notice.priority === 'urgent' ? '긴급' : `${notice.durationSec || 15}초 표시`}</span>
+                      </td>
+                      <td>
+                        {notice.mediaUrl || notice.linkUrl ? (
+                          <a className="mini-btn" href={notice.mediaUrl || notice.linkUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink size={14} />
+                            열기
+                          </a>
+                        ) : <span className="muted-text">-</span>}
+                      </td>
+                      <td>
+                        <div className="button-row">
+                          <button className="mini-btn" onClick={() => handleToggleNotice(notice.id)}>
+                            {notice.isActive ? <PauseCircle size={14} /> : <PlayCircle size={14} />}
+                            {notice.isActive ? '중지' : '활성'}
+                          </button>
+                          <button className="danger-btn" onClick={() => handleDeleteNotice(notice.id)}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {storeNotices.length === 0 && <div className="empty-panel">이 업체에 등록된 공지가 없습니다.</div>}
+            </div>
+          </section>
+        )}
+
         {activeTab === 'playlist' && (
           <section className="page">
             <SectionTitle
@@ -1642,6 +2026,42 @@ function App() {
                   )}
                 </div>
 
+                <div className="panel error-log-panel">
+                  <div className="panel-head-row">
+                    <div>
+                      <h3>Player 오류 로그</h3>
+                      <p className="muted-text">TV 화면에 표시된 오류코드와 Player가 CMS로 보고한 문제입니다.</p>
+                    </div>
+                    <div className="button-row">
+                      <button className="mini-btn" onClick={() => loadPlayerErrors(selectedDevice.id)}>
+                        <RefreshCw size={14} />
+                        로그 새로고침
+                      </button>
+                      <button className="mini-btn" onClick={() => clearPlayerErrors(selectedDevice.id)}>
+                        <Trash2 size={14} />
+                        로그 정리
+                      </button>
+                    </div>
+                  </div>
+
+                  {selectedPlayerErrors.length === 0 ? (
+                    <p className="empty-text">최근 보고된 Player 오류가 없습니다.</p>
+                  ) : (
+                    <div className="error-log-list">
+                      {selectedPlayerErrors.map((error) => (
+                        <div className={`error-log-item ${error.level || 'error'}`} key={error.id}>
+                          <div>
+                            <strong>{error.errorCode}</strong>
+                            <span>{error.message}</span>
+                            <em>{error.createdAt || '-'}</em>
+                          </div>
+                          <code>{error.extra?.fileName || error.extra?.url || error.href || '-'}</code>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="detail-grid">
                   <div className="panel">
                     <h3>이 업체의 좌측 70% 콘텐츠</h3>
@@ -1704,6 +2124,8 @@ function App() {
                   <input value={settings.restart} onChange={(event) => handleUpdateSetting('restart', event.target.value)} />
                   <label>캐시 개수</label>
                   <input value={settings.cacheMax} onChange={(event) => handleUpdateSetting('cacheMax', event.target.value)} />
+                  <label>공지 확인 주기(ms)</label>
+                  <input value={settings.noticePollMs || '15000'} onChange={(event) => handleUpdateSetting('noticePollMs', event.target.value)} />
                 </div>
               </div>
               <div className="panel">
