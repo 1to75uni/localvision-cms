@@ -24,9 +24,8 @@ async function readBody(request) {
 }
 
 function onlineTtlSec(env) {
-  // v1.6: Player heartbeat 기본 3분 기준. 현장 네트워크 흔들림을 고려해 10분 이내는 ONLINE으로 봅니다.
-  const value = Number(env.ONLINE_TTL_SEC || 600)
-  return Number.isFinite(value) && value > 0 ? value : 600
+  const value = Number(env.ONLINE_TTL_SEC || 180)
+  return Number.isFinite(value) && value > 0 ? value : 180
 }
 
 function parseLastSeenMs(value, nowMs = Date.now()) {
@@ -49,11 +48,29 @@ function parseLastSeenMs(value, nowMs = Date.now()) {
     const ampm = ko[4]
     if (ampm === '오후' && hour < 12) hour += 12
     if (ampm === '오전' && hour === 12) hour = 0
-    return Date.UTC(Number(ko[1]), Number(ko[2]) - 1, Number(ko[3]), hour - 9, Number(ko[6]), Number(ko[7] || 0))
+
+    // Player가 ko-KR 문자열을 보내면 KST 기준 시간이므로 UTC로 환산합니다.
+    return Date.UTC(
+      Number(ko[1]),
+      Number(ko[2]) - 1,
+      Number(ko[3]),
+      hour - 9,
+      Number(ko[6]),
+      Number(ko[7] || 0)
+    )
   }
 
   const sql = raw.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (sql) return Date.UTC(Number(sql[1]), Number(sql[2]) - 1, Number(sql[3]), Number(sql[4]), Number(sql[5]), Number(sql[6] || 0))
+  if (sql) {
+    return Date.UTC(
+      Number(sql[1]),
+      Number(sql[2]) - 1,
+      Number(sql[3]),
+      Number(sql[4]),
+      Number(sql[5]),
+      Number(sql[6] || 0)
+    )
+  }
 
   const parsed = Date.parse(raw)
   return Number.isNaN(parsed) ? 0 : parsed
@@ -79,43 +96,6 @@ function mapDevice(row, env, nowMs = Date.now()) {
     commandAt: row.commandAt,
     updatedAt: row.updatedAt,
   }
-}
-
-async function findDevice(env, { id = '', store = '' } = {}) {
-  if (id) {
-    const row = await env.DB.prepare(`
-      SELECT
-        id, store, name, role, online,
-        last_seen AS lastSeen,
-        app,
-        device_code AS deviceCode,
-        last_command AS lastCommand,
-        command_at AS commandAt,
-        updated_at AS updatedAt
-      FROM devices
-      WHERE id = ?
-    `).bind(id).first()
-    if (row) return row
-  }
-
-  if (store) {
-    return await env.DB.prepare(`
-      SELECT
-        id, store, name, role, online,
-        last_seen AS lastSeen,
-        app,
-        device_code AS deviceCode,
-        last_command AS lastCommand,
-        command_at AS commandAt,
-        updated_at AS updatedAt
-      FROM devices
-      WHERE store = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-    `).bind(store).first()
-  }
-
-  return null
 }
 
 export async function onRequestGet({ env }) {
@@ -145,12 +125,12 @@ export async function onRequestPost({ request, env }) {
 
   const device = {
     id: body.id || `dv_${Date.now()}`,
-    store: String(body.store || '').trim(),
+    store: body.store,
     name: body.name,
     role: body.role || 'tv',
     online: body.online ? 1 : 0,
     lastSeen: body.lastSeen || '아직 접속 없음',
-    app: body.app || 'Android TV App',
+    app: body.app || 'Player Web',
     deviceCode: body.deviceCode || '',
     lastCommand: body.lastCommand || '',
     commandAt: body.commandAt || '',
@@ -180,73 +160,33 @@ export async function onRequestPatch({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
 
   const body = await readBody(request)
-  const id = String(body.id || '').trim()
-  const store = String(body.store || '').trim()
-  if (!id && !store) return json({ ok: false, error: 'id or store is required' }, 400)
+  if (!body.id) return json({ ok: false, error: 'id is required' }, 400)
 
-  let current = await findDevice(env, { id, store })
-
-  // v1.6: URL 하나 = 매장 TV 한 대 운영을 기준으로, 처음 보는 store heartbeat도 자동 등록합니다.
-  if (!current && store) {
-    const autoDevice = {
-      id: id || `store_${store}`,
-      store,
-      name: body.name || `${store} TV 1`,
-      role: body.role || 'tv',
-      online: 0,
-      lastSeen: '아직 접속 없음',
-      app: body.app || 'Player Web v1.6',
-      deviceCode: body.deviceCode || `LV-${store.toUpperCase()}-01`,
-      lastCommand: '',
-      commandAt: '',
-    }
-
-    await env.DB.prepare(`
-      INSERT OR IGNORE INTO devices
-      (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).bind(
-      autoDevice.id,
-      autoDevice.store,
-      autoDevice.name,
-      autoDevice.role,
-      autoDevice.online,
-      autoDevice.lastSeen,
-      autoDevice.app,
-      autoDevice.deviceCode,
-      autoDevice.lastCommand,
-      autoDevice.commandAt
-    ).run()
-
-    current = await findDevice(env, { id: autoDevice.id, store })
-  }
-
+  const current = await env.DB.prepare(`SELECT * FROM devices WHERE id = ?`).bind(body.id).first()
   if (!current) return json({ ok: false, error: 'device not found' }, 404)
 
   const online = typeof body.online === 'boolean' ? (body.online ? 1 : 0) : current.online
-  const lastSeen = body.lastSeen ?? (body.online === true ? new Date().toISOString() : current.lastSeen)
-  const lastCommand = body.lastCommand ?? current.lastCommand
-  const commandAt = body.commandAt ?? current.commandAt
-  const app = body.app || current.app
+  const lastSeen = body.lastSeen ?? (body.online === true ? new Date().toISOString() : current.last_seen)
+  const lastCommand = body.lastCommand ?? current.last_command
+  const commandAt = body.commandAt ?? current.command_at
 
   await env.DB.prepare(`
     UPDATE devices
-    SET online = ?, last_seen = ?, app = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
+    SET online = ?, last_seen = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).bind(online, lastSeen, app, lastCommand, commandAt, current.id).run()
+  `).bind(online, lastSeen, lastCommand, commandAt, body.id).run()
 
   return json({
     ok: true,
-    matchMode: id ? 'id' : 'store',
     device: mapDevice({
-      id: current.id,
+      id: body.id,
       store: current.store,
       name: current.name,
       role: current.role,
       online,
       lastSeen,
-      app,
-      deviceCode: current.deviceCode,
+      app: current.app,
+      deviceCode: current.device_code,
       lastCommand,
       commandAt,
       updatedAt: new Date().toISOString(),

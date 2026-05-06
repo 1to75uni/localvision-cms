@@ -1,11 +1,15 @@
-CREATE TABLE IF NOT EXISTS device_screenshots (
+-- LocalVision CMS v2.1 Player Error Logs
+CREATE TABLE IF NOT EXISTS player_errors (
   id TEXT PRIMARY KEY,
-  device_id TEXT NOT NULL,
   store TEXT DEFAULT '',
-  url TEXT NOT NULL,
-  r2_key TEXT DEFAULT '',
+  device_id TEXT DEFAULT '',
+  error_code TEXT NOT NULL,
+  level TEXT DEFAULT 'error',
+  message TEXT NOT NULL,
+  href TEXT DEFAULT '',
+  user_agent TEXT DEFAULT '',
+  extra_json TEXT DEFAULT '',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX IF NOT EXISTS idx_device_screenshots_device_created
-ON device_screenshots(device_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_errors_device_created ON player_errors(device_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at);
