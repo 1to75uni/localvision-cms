@@ -1,12 +1,11 @@
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LocalVision CMS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+CREATE TABLE IF NOT EXISTS device_screenshots (
+  id TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  store TEXT DEFAULT '',
+  url TEXT NOT NULL,
+  r2_key TEXT DEFAULT '',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_screenshots_device_created
+ON device_screenshots(device_id, created_at);

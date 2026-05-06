@@ -1,37 +1,109 @@
-# LocalVision CMS v1.6 · store 기준 하트비트
+-- LocalVision CMS D1 Schema v1.6
 
-이 CMS는 LocalVision Player v1.6 / APP v8.2 운영 구조를 기준으로 합니다.
+CREATE TABLE IF NOT EXISTS stores (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,
+  category TEXT DEFAULT '',
+  address TEXT DEFAULT '',
+  contact TEXT DEFAULT '',
+  status TEXT DEFAULT '준비중',
+  plan TEXT DEFAULT 'Local Basic',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
-## 핵심 변경사항
+CREATE TABLE IF NOT EXISTS contents (
+  id TEXT PRIMARY KEY,
+  store TEXT NOT NULL,
+  side TEXT NOT NULL CHECK (side IN ('left', 'right')),
+  type TEXT NOT NULL CHECK (type IN ('image', 'video')),
+  title TEXT NOT NULL,
+  duration INTEGER DEFAULT 10,
+  status TEXT DEFAULT '사용중',
+  file_name TEXT DEFAULT '',
+  url TEXT DEFAULT '',
+  sort_order INTEGER DEFAULT 0,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
-1. deviceId 의존 제거
-   - TV 설치용 URL에는 `deviceId`를 붙이지 않습니다.
-   - 상태, 하트비트, 오류 로그, 스크린샷 조회는 `store` 기준으로 동작합니다.
+CREATE TABLE IF NOT EXISTS devices (
+  id TEXT PRIMARY KEY,
+  store TEXT NOT NULL,
+  name TEXT NOT NULL,
+  role TEXT DEFAULT 'tv',
+  online INTEGER DEFAULT 0,
+  last_seen TEXT DEFAULT '아직 접속 없음',
+  app TEXT DEFAULT 'Android TV App',
+  device_code TEXT DEFAULT '',
+  last_command TEXT DEFAULT '',
+  command_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
-2. 하트비트 기준 변경
-   - Player URL 기본값: `heartbeat=180000` = 3분
-   - CMS ONLINE 판정 기본값: 마지막 접속 10분 이내
-   - Cloudflare 환경변수로 조정 가능: `ONLINE_TTL_SEC=600`
+CREATE TABLE IF NOT EXISTS logs (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  target TEXT DEFAULT '',
+  message TEXT DEFAULT '',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
-3. 자동 등록/업데이트
-   - `/api/devices` PATCH 요청이 `store`만 가지고 와도 해당 매장의 TV 상태를 업데이트합니다.
-   - DB에 단말기가 없으면 `store_<store>` 형태로 자동 등록합니다.
+INSERT OR IGNORE INTO stores (id, name, slug, category, address, contact, status, plan, created_at)
+VALUES
+('st_001', '굽네치킨 고산점', 'goobne', '치킨 / 음식점', '의정부시 고산동', '010-0000-0000', '운영중', 'Local Basic', '2026-05-02'),
+('st_002', '샛별플라워', 'sbflower', '꽃집', '의정부시 민락동', '010-0000-0000', '준비중', 'Local Basic', '2026-05-02'),
+('st_003', '아름드리 카페', 'areumcafe', '카페', '의정부시 금오동', '010-0000-0000', '운영중', 'Public Board', '2026-05-02');
 
-4. 버전
-   - CMS: `v1.6`
-   - Player 연동 기준: `v1.6`
-   - APP 연동 기준: `v8.2`
+INSERT OR IGNORE INTO contents (id, store, side, type, title, duration, status, file_name, sort_order, updated_at)
+VALUES
+('ct_001', 'goobne', 'left', 'video', '대표메뉴 치킨 영상', 20, '사용중', 'left_1.mp4', 1, '2026-05-02'),
+('ct_002', 'goobne', 'left', 'image', '점심세트 메뉴판', 10, '사용중', 'left_2.jpg', 2, '2026-05-02'),
+('ct_003', '_common', 'right', 'image', '의정부 지역소식 카드', 12, '사용중', 'right_1.jpg', 1, '2026-05-01'),
+('ct_004', '_common', 'right', 'video', 'LocalVision 공통 홍보', 15, '사용중', 'right_2.mp4', 2, '2026-05-01');
 
-## 배포
+INSERT OR IGNORE INTO devices (id, store, name, role, online, last_seen, app, device_code, created_at)
+VALUES
+('dv_001', 'goobne', '굽네치킨 TV 1', 'tv', 1, '방금 전', 'Android TV App', 'LV-GOOBNE-01', '2026-05-02'),
+('dv_002', 'sbflower', '샛별플라워 TV 1', 'tv', 0, '37분 전', 'Fully Kiosk', 'LV-SBFLOWER-01', '2026-05-02'),
+('dv_003', 'areumcafe', '아름드리 카페 TV 1', 'tv', 1, '1분 전', 'Android TV App', 'LV-AREUM-01', '2026-05-02');
 
-Cloudflare Pages에 이 폴더를 그대로 업로드/배포하면 됩니다.
-D1 바인딩 이름은 `DB`, R2 바인딩 이름은 `MEDIA` 기준입니다.
+-- Player error logs reported by LocalVision Player
+CREATE TABLE IF NOT EXISTS player_errors (
+  id TEXT PRIMARY KEY,
+  store TEXT DEFAULT '',
+  device_id TEXT DEFAULT '',
+  error_code TEXT NOT NULL,
+  level TEXT DEFAULT 'error',
+  message TEXT NOT NULL,
+  href TEXT DEFAULT '',
+  user_agent TEXT DEFAULT '',
+  extra_json TEXT DEFAULT '',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_player_errors_device_created ON player_errors(device_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at);
 
-## 주요 API
-
-- `/api/backup`
-- `/api/devices`
-- `/api/player-config?store=palpal`
-- `/api/screenshots?store=palpal`
-- `/api/player-errors?store=palpal`
-- `/api/notices?active=1&store=palpal`
+-- Fullscreen notices per store
+CREATE TABLE IF NOT EXISTS notices (
+  id TEXT PRIMARY KEY,
+  store TEXT NOT NULL,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('image', 'video', 'link', 'text')),
+  message TEXT DEFAULT '',
+  media_url TEXT DEFAULT '',
+  link_url TEXT DEFAULT '',
+  file_name TEXT DEFAULT '',
+  start_at TEXT DEFAULT '',
+  end_at TEXT DEFAULT '',
+  display_mode TEXT DEFAULT 'fullscreen',
+  priority TEXT DEFAULT 'normal',
+  duration_sec INTEGER DEFAULT 15,
+  repeat_mode TEXT DEFAULT 'always',
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notices_store_active ON notices(store, is_active);
+CREATE INDEX IF NOT EXISTS idx_notices_time ON notices(start_at, end_at);
