@@ -169,7 +169,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.4.3-auto-offline',
+    version: 'v1.5',
     store,
     layout: {
       leftRatio: 70,

@@ -915,7 +915,7 @@ tbody tr:hover,
 }
 
 
-/* v1.3 server status */
+/* v1.5 CMS server status */
 .server-chip {
   display: inline-flex;
   align-items: center;
@@ -934,6 +934,7 @@ tbody tr:hover,
   border-color: #bbf7d0;
 }
 
+.server-chip.error,
 .server-chip.local {
   background: #fff7ed;
   color: #c2410c;
@@ -947,7 +948,7 @@ tbody tr:hover,
 }
 
 
-/* v1.4 player playlist API */
+/* v1.5 player playlist API */
 .api-link-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

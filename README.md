@@ -1,15 +1,15 @@
-# LocalVision CMS Core v1 · NOTICE01
+# LocalVision CMS v1.5
 
-이 CMS는 `LocalVision TV App Core v1` 운영 구조를 기준으로 합니다.
+이 CMS는 `LocalVision TV App V8.1` 운영 구조를 기준으로 합니다.
 앱은 한 번 설치한 뒤 거의 수정하지 않고, 이후 기능 업데이트는 CMS와 Player 웹 배포로 처리합니다.
 
-- build: `LocalVision-Core-v1-NOTICE01`
+- build: `LocalVision-CMS-v1.5`
 - CMS 기능: 업체/콘텐츠 관리, 전체화면 공지, 오류 로그, 강제 새로고침, 스크린샷, Player URL 생성
 - Player/App 연동: TV 앱은 WebView 껍데기 역할을 하고, 실제 기능은 Player와 CMS에서 관리합니다.
 
 ---
 
-# LocalVision CMS v2.4 Auto Offline
+# LocalVision CMS v1.5 Auto Offline
 
 ## 핵심 수정
 

@@ -37,6 +37,7 @@ import {
 const STORAGE_KEY = 'localvision-cms-v1-1'
 const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
+const CMS_VERSION = 'v1.5'
 const DEVICE_ONLINE_TTL_MS = 3 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
@@ -214,6 +215,10 @@ const tabs = [
   { id: 'settings', label: '설정/백업', icon: Settings },
 ]
 
+function stripTrailingSlash(value) {
+  return String(value || '').trim().replace(/\/+$/, '')
+}
+
 function getToday() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -322,17 +327,12 @@ function makePlayerUrl(slug, settings, deviceId = '') {
   return `${settings.playerBase}/?${params.toString()}`
 }
 
-function getOrigin() {
-  if (typeof window === 'undefined') return ''
-  return window.location.origin
+function makePlaylistApiUrl(slug, side, apiBase = API_BASE) {
+  return `${stripTrailingSlash(apiBase)}/api/playlist?store=${encodeURIComponent(slug)}&side=${encodeURIComponent(side)}`
 }
 
-function makePlaylistApiUrl(slug, side) {
-  return `${getOrigin()}/api/playlist?store=${encodeURIComponent(slug)}&side=${encodeURIComponent(side)}`
-}
-
-function makePlayerConfigUrl(slug) {
-  return `${getOrigin()}/api/player-config?store=${encodeURIComponent(slug)}`
+function makePlayerConfigUrl(slug, apiBase = API_BASE) {
+  return `${stripTrailingSlash(apiBase)}/api/player-config?store=${encodeURIComponent(slug)}`
 }
 
 function StatCard({ label, value, helper, tone = 'blue' }) {
@@ -498,10 +498,18 @@ function App() {
   const currentLeftContent = selectedDeviceLeftContents[0]
   const currentRightContent = selectedDeviceRightContents[0]
 
+  function resolveCmsApiUrl(path) {
+    const raw = String(path || '')
+    if (/^https?:\/\//i.test(raw)) return raw
+    if (raw.startsWith('/api/')) return `${stripTrailingSlash(settings?.apiBase || API_BASE)}${raw}`
+    return raw
+  }
+
   async function apiRequest(path, options = {}) {
     const isFormData = options.body instanceof FormData
-    const response = await fetch(path, {
+    const response = await fetch(resolveCmsApiUrl(path), {
       ...options,
+      cache: options.cache || 'no-store',
       headers: isFormData
         ? (options.headers || {})
         : {
@@ -531,15 +539,15 @@ function App() {
       setServerStatus('connected')
       if (showMessage) showToast('D1 서버 데이터를 불러왔습니다.')
     } catch (error) {
-      setServerStatus('local')
-      if (showMessage) showToast('서버 연결 전입니다. 브라우저 저장 모드로 유지됩니다.')
+      setServerStatus('error')
+      if (showMessage) showToast('CMS 서버 연결을 확인해 주세요. 브라우저 임시 저장은 보조용입니다.')
     }
   }
 
   function sendToServer(path, options = {}) {
     apiRequest(path, options)
       .then(() => setServerStatus('connected'))
-      .catch(() => setServerStatus('local'))
+      .catch(() => setServerStatus('error'))
   }
 
   function updateData(patch) {
@@ -1082,7 +1090,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v2.3</span>
+            <span>{CMS_VERSION.replace('v', 'CMS Console v')}</span>
           </div>
         </div>
 
@@ -1104,20 +1112,20 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>API 미디어 캐시 적용</strong>
-          <span>Player v1.4.1 API 미디어 캐시</span>
+          <strong>CMS 모드 기본 연결</strong>
+          <span>Player/CMS v1.5</span>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS Core v1</p>
+            <p className="eyebrow">LocalVision CMS v1.5</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
             <span className={`server-chip ${serverStatus}`}>
-              {serverStatus === 'connected' ? 'D1 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '브라우저 저장 모드'}
+              {serverStatus === 'connected' ? 'CMS 서버 연결됨' : serverStatus === 'checking' ? 'CMS 서버 확인중' : 'CMS 서버 연결 필요'}
             </span>
             <button className="ghost-btn" onClick={() => loadServerData(true)}>
               <RefreshCw size={16} />
@@ -1140,8 +1148,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v2.1에서 Player v1.4.1 API 미디어 캐시 옵션을 TV 설치용 URL에 적용했습니다.</strong>
-                <p>영상과 이미지를 1시간 단위로 전체 다운로드하고, 다운로드 완료된 묶음만 TV에 적용하는 설정이 자동으로 붙습니다.</p>
+                <strong>v1.5에서 CMS 서버 연결 모드를 TV 설치용 URL에 적용했습니다.</strong>
+                <p>브라우저 임시 저장은 보조용으로만 사용하고, 기본 데이터 입출력은 CMS API 기준으로 동작합니다.</p>
               </div>
             </div>
 
@@ -1156,7 +1164,7 @@ function App() {
               <div className="panel">
                 <h3>오늘의 운영 체크</h3>
                 <div className="check-list">
-                  <div><CheckCircle2 size={18} /> 업체 생성 후 서버/브라우저 저장</div>
+                  <div><CheckCircle2 size={18} /> 업체 생성 후 CMS 서버 저장</div>
                   <div><CheckCircle2 size={18} /> 콘텐츠 업로드 및 R2 저장</div>
                   <div><CheckCircle2 size={18} /> TV 단말기 상태 확인</div>
                   <div><CheckCircle2 size={18} /> JSON 백업 다운로드 지원</div>
@@ -1769,13 +1777,13 @@ function App() {
             <div className="api-link-grid">
               <div className="panel api-panel">
                 <h3>좌측 70% Playlist API</h3>
-                <code>{makePlaylistApiUrl(selectedStore, 'left')}</code>
+                <code>{makePlaylistApiUrl(selectedStore, 'left', settings.apiBase)}</code>
                 <div className="button-row">
-                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'left'))}>
+                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'left', settings.apiBase))}>
                     <Copy size={14} />
                     복사
                   </button>
-                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'left')} target="_blank" rel="noreferrer">
+                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'left', settings.apiBase)} target="_blank" rel="noreferrer">
                     <ExternalLink size={14} />
                     열기
                   </a>
@@ -1784,13 +1792,13 @@ function App() {
 
               <div className="panel api-panel">
                 <h3>우측 30% Playlist API</h3>
-                <code>{makePlaylistApiUrl(selectedStore, 'right')}</code>
+                <code>{makePlaylistApiUrl(selectedStore, 'right', settings.apiBase)}</code>
                 <div className="button-row">
-                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'right'))}>
+                  <button className="mini-btn" onClick={() => handleCopy(makePlaylistApiUrl(selectedStore, 'right', settings.apiBase))}>
                     <Copy size={14} />
                     복사
                   </button>
-                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'right')} target="_blank" rel="noreferrer">
+                  <a className="mini-btn" href={makePlaylistApiUrl(selectedStore, 'right', settings.apiBase)} target="_blank" rel="noreferrer">
                     <ExternalLink size={14} />
                     열기
                   </a>
@@ -1799,13 +1807,13 @@ function App() {
 
               <div className="panel api-panel wide">
                 <h3>TV 화면 연동 주소</h3>
-                <code>{makePlayerConfigUrl(selectedStore)}</code>
+                <code>{makePlayerConfigUrl(selectedStore, settings.apiBase)}</code>
                 <div className="button-row">
-                  <button className="mini-btn" onClick={() => handleCopy(makePlayerConfigUrl(selectedStore))}>
+                  <button className="mini-btn" onClick={() => handleCopy(makePlayerConfigUrl(selectedStore, settings.apiBase))}>
                     <Copy size={14} />
                     복사
                   </button>
-                  <a className="mini-btn" href={makePlayerConfigUrl(selectedStore)} target="_blank" rel="noreferrer">
+                  <a className="mini-btn" href={makePlayerConfigUrl(selectedStore, settings.apiBase)} target="_blank" rel="noreferrer">
                     <ExternalLink size={14} />
                     열기
                   </a>

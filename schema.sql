@@ -1,4 +1,4 @@
--- LocalVision CMS D1 Schema v1.3
+-- LocalVision CMS D1 Schema v1.5
 
 CREATE TABLE IF NOT EXISTS stores (
   id TEXT PRIMARY KEY,
