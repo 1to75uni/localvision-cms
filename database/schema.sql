@@ -1,4 +1,4 @@
--- LocalVision CMS D1 Schema v1.5
+-- LocalVision CMS D1 Schema v1.6
 
 CREATE TABLE IF NOT EXISTS stores (
   id TEXT PRIMARY KEY,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS devices (
   role TEXT DEFAULT 'tv',
   online INTEGER DEFAULT 0,
   last_seen TEXT DEFAULT '아직 접속 없음',
-  app TEXT DEFAULT 'Player Web',
+  app TEXT DEFAULT 'Android TV App',
   device_code TEXT DEFAULT '',
   last_command TEXT DEFAULT '',
   command_at TEXT DEFAULT '',
@@ -65,7 +65,7 @@ VALUES
 
 INSERT OR IGNORE INTO devices (id, store, name, role, online, last_seen, app, device_code, created_at)
 VALUES
-('dv_001', 'goobne', '굽네치킨 TV 1', 'tv', 1, '방금 전', 'Player Web', 'LV-GOOBNE-01', '2026-05-02'),
+('dv_001', 'goobne', '굽네치킨 TV 1', 'tv', 1, '방금 전', 'Android TV App', 'LV-GOOBNE-01', '2026-05-02'),
 ('dv_002', 'sbflower', '샛별플라워 TV 1', 'tv', 0, '37분 전', 'Fully Kiosk', 'LV-SBFLOWER-01', '2026-05-02'),
 ('dv_003', 'areumcafe', '아름드리 카페 TV 1', 'tv', 1, '1분 전', 'Android TV App', 'LV-AREUM-01', '2026-05-02');
 

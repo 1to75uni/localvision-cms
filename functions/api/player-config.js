@@ -16,8 +16,8 @@ export async function onRequestOptions() {
 }
 
 function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 180)
-  return Number.isFinite(value) && value > 0 ? value : 180
+  const value = Number(env.ONLINE_TTL_SEC || 600)
+  return Number.isFinite(value) && value > 0 ? value : 600
 }
 
 function parseLastSeenMs(value, nowMs = Date.now()) {
@@ -169,7 +169,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.5',
+    version: 'v1.6',
     store,
     layout: {
       leftRatio: 70,

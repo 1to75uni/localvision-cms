@@ -34,11 +34,11 @@ import {
   EyeOff,
 } from 'lucide-react'
 
-const STORAGE_KEY = 'localvision-cms-v1-1'
+const STORAGE_KEY = 'localvision-cms-v1-6'
 const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
-const CMS_VERSION = 'v1.5'
-const DEVICE_ONLINE_TTL_MS = 3 * 60 * 1000
+const CMS_VERSION = 'v1.6'
+const DEVICE_ONLINE_TTL_MS = 10 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
   'https://player-8kv.pages.dev',
@@ -142,7 +142,7 @@ const sampleDevices = [
     role: 'tv',
     online: true,
     lastSeen: '방금 전',
-    app: 'Player Web',
+    app: 'Android TV App',
     deviceCode: 'LV-GOOBNE-01',
   },
   {
@@ -301,12 +301,12 @@ function loadData() {
   }
 }
 
-function makePlayerUrl(slug, settings, deviceId = '') {
+function makePlayerUrl(slug, settings) {
   const params = new URLSearchParams({
     store: slug,
     apiBase: settings.apiBase,
     refresh: '3600000',
-    heartbeat: '30000',
+    heartbeat: '180000',
     restart: settings.restart,
     restartMode: settings.restartMode,
     restartJitterSec: settings.restartJitterSec,
@@ -319,10 +319,6 @@ function makePlayerUrl(slug, settings, deviceId = '') {
     activateWhenCached: '1',
     fit: 'cover',
   })
-
-  if (deviceId) {
-    params.set('deviceId', deviceId)
-  }
 
   return `${settings.playerBase}/?${params.toString()}`
 }
@@ -412,7 +408,7 @@ function App() {
   const [newDevice, setNewDevice] = useState({
     name: '',
     store: selectedStore,
-    app: 'Player Web',
+    app: 'Android TV App',
     deviceCode: '',
   })
 
@@ -488,8 +484,9 @@ function App() {
   const offlineDevices = devices.filter((device) => !isDeviceOnline(device))
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
-  const selectedScreenshot = selectedDevice ? screenshots[selectedDevice.id] : null
-  const selectedPlayerErrors = selectedDevice ? (playerErrors[selectedDevice.id] || []) : []
+  const selectedDeviceKey = selectedDevice?.store || selectedDevice?.id || ''
+  const selectedScreenshot = selectedDevice ? (screenshots[selectedDeviceKey] || screenshots[selectedDevice.id]) : null
+  const selectedPlayerErrors = selectedDevice ? (playerErrors[selectedDeviceKey] || playerErrors[selectedDevice.id] || []) : []
   const selectedDeviceStore = stores.find((store) => store.slug === selectedDevice?.store)
   const selectedDeviceLeftContents = contents.filter(
     (content) => content.side === 'left' && content.store === selectedDevice?.store
@@ -662,7 +659,7 @@ function App() {
       role: 'tv',
       online: false,
       lastSeen: '아직 접속 없음',
-      app: 'Player Web',
+      app: 'Android TV App',
       deviceCode: `LV-${slug.toUpperCase()}-01`,
     }
 
@@ -892,7 +889,7 @@ function App() {
       method: 'POST',
       body: JSON.stringify(nextDevice),
     })
-    setNewDevice({ name: '', store: selectedStore, app: 'Player Web', deviceCode: '' })
+    setNewDevice({ name: '', store: selectedStore, app: 'Android TV App', deviceCode: '' })
     showToast('단말기가 저장되었습니다.')
   }
 
@@ -966,22 +963,22 @@ function App() {
       await sendDeviceCommand(selectedDevice.id, 'screenshot')
       showToast('TV 현재화면 캡처 요청을 보냈습니다. 10~20초 후 이미지가 갱신됩니다.')
 
-      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 12000)
-      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 22000)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice.store), 12000)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice.store), 22000)
     } catch (error) {
       showToast(`스크린샷 요청 실패: ${error.message}`)
       setIsScreenshotLoading(false)
     }
   }
 
-  async function loadLatestScreenshot(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function loadLatestScreenshot(store = selectedDevice?.store) {
+    if (!store) return
 
     try {
-      const payload = await apiRequest(`/api/screenshots?deviceId=${encodeURIComponent(deviceId)}`)
+      const payload = await apiRequest(`/api/screenshots?store=${encodeURIComponent(store)}`)
       setScreenshots((prev) => ({
         ...prev,
-        [deviceId]: payload.screenshot,
+        [store]: payload.screenshot,
       }))
       setServerStatus('connected')
     } catch (error) {
@@ -991,28 +988,28 @@ function App() {
     }
   }
 
-  async function loadPlayerErrors(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function loadPlayerErrors(store = selectedDevice?.store) {
+    if (!store) return
 
     try {
-      const payload = await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}&limit=20`)
+      const payload = await apiRequest(`/api/player-errors?store=${encodeURIComponent(store)}&limit=20`)
       setPlayerErrors((prev) => ({
         ...prev,
-        [deviceId]: Array.isArray(payload.errors) ? payload.errors : [],
+        [store]: Array.isArray(payload.errors) ? payload.errors : [],
       }))
       setServerStatus('connected')
     } catch (error) {
-      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      setPlayerErrors((prev) => ({ ...prev, [store]: [] }))
       setServerStatus('local')
     }
   }
 
-  async function clearPlayerErrors(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function clearPlayerErrors(store = selectedDevice?.store) {
+    if (!store) return
 
     try {
-      await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}`, { method: 'DELETE' })
-      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      await apiRequest(`/api/player-errors?store=${encodeURIComponent(store)}`, { method: 'DELETE' })
+      setPlayerErrors((prev) => ({ ...prev, [store]: [] }))
       showToast('오류 로그를 정리했습니다.')
     } catch (error) {
       showToast('오류 로그 정리에 실패했습니다.')
@@ -1113,14 +1110,14 @@ function App() {
         <div className="side-note">
           <p>현재 단계</p>
           <strong>CMS 모드 기본 연결</strong>
-          <span>Player/CMS v1.5</span>
+          <span>Player/CMS v1.6</span>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS v1.5</p>
+            <p className="eyebrow">LocalVision CMS v1.6</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
@@ -1148,7 +1145,7 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.5에서 CMS 서버 연결 모드를 TV 설치용 URL에 적용했습니다.</strong>
+                <strong>v1.6에서 CMS 서버 연결 모드를 TV 설치용 URL에 적용했습니다.</strong>
                 <p>브라우저 임시 저장은 보조용으로만 사용하고, 기본 데이터 입출력은 CMS API 기준으로 동작합니다.</p>
               </div>
             </div>
@@ -1878,9 +1875,9 @@ function App() {
                   value={newDevice.app}
                   onChange={(event) => setNewDevice({ ...newDevice, app: event.target.value })}
                 >
+                  <option value="Android TV App">Android TV App</option>
                   <option value="Player Web">Player Web</option>
                   <option value="Fully Kiosk">Fully Kiosk</option>
-                  <option value="Android TV App">Android TV App</option>
                 </select>
                 <input
                   placeholder="단말기 코드 예: LV-GOOBNE-02"
@@ -1898,7 +1895,7 @@ function App() {
               <Eye size={20} />
               <div>
                 <strong>TV 카드를 클릭하면 새로고침과 현재화면 캡처를 요청할 수 있습니다.</strong>
-                <p>마지막 접속이 3분 이상 갱신되지 않으면 자동으로 OFFLINE 처리됩니다.</p>
+                <p>마지막 접속이 10분 이상 갱신되지 않으면 자동으로 OFFLINE 처리됩니다.</p>
               </div>
             </div>
 
@@ -1950,11 +1947,11 @@ function App() {
                     <span>{selectedDevice.name} · {selectedDevice.deviceCode}</span>
                   </div>
                   <div className="button-row">
-                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings, selectedDevice.id))}>
+                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings))}>
                       <Copy size={16} />
                       TV 설치용 URL 복사
                     </button>
-                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings, selectedDevice.id)} target="_blank" rel="noreferrer">
+                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings)} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} />
                       TV 화면 열기
                     </a>
@@ -1990,7 +1987,7 @@ function App() {
                       </div>
                     </div>
                     <p className="muted-text">
-                      TV 앱이 15초마다 명령을 확인합니다. refresh는 화면 새로고침, screenshot은 실제 TV 화면 캡처 업로드로 처리됩니다.
+                      TV 앱/Player가 15초마다 명령을 확인합니다. refresh는 화면 새로고침, screenshot은 실제 TV 화면 캡처 업로드로 처리됩니다.
                     </p>
                   </div>
                 </div>
@@ -2002,7 +1999,7 @@ function App() {
                       <p>TV 앱이 업로드한 최신 스크린샷입니다.</p>
                     </div>
                     <div className="button-row">
-                      <button className="mini-btn" onClick={() => loadLatestScreenshot(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => loadLatestScreenshot(selectedDevice.store)}>
                         <RefreshCw size={14} />
                         캡처 새로고침
                       </button>
@@ -2027,7 +2024,7 @@ function App() {
                       </div>
                       <div className="preview-right">
                         <span>READY</span>
-                        <strong>Android TV App v2.6 필요</strong>
+                        <strong>Android TV App v8.2 필요</strong>
                         <p>앱이 명령을 받으면 이곳에 최신 이미지가 표시됩니다.</p>
                       </div>
                     </div>
@@ -2041,11 +2038,11 @@ function App() {
                       <p className="muted-text">TV 화면에 표시된 오류코드와 Player가 CMS로 보고한 문제입니다.</p>
                     </div>
                     <div className="button-row">
-                      <button className="mini-btn" onClick={() => loadPlayerErrors(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => loadPlayerErrors(selectedDevice.store)}>
                         <RefreshCw size={14} />
                         로그 새로고침
                       </button>
-                      <button className="mini-btn" onClick={() => clearPlayerErrors(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => clearPlayerErrors(selectedDevice.store)}>
                         <Trash2 size={14} />
                         로그 정리
                       </button>

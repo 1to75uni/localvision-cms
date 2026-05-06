@@ -915,7 +915,7 @@ tbody tr:hover,
 }
 
 
-/* v1.5 CMS server status */
+/* v1.6 CMS server status */
 .server-chip {
   display: inline-flex;
   align-items: center;
@@ -948,7 +948,7 @@ tbody tr:hover,
 }
 
 
-/* v1.5 player playlist API */
+/* v1.6 player playlist API */
 .api-link-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -980,7 +980,7 @@ tbody tr:hover,
 }
 
 
-/* v1.5 R2 upload */
+/* v1.6 R2 upload */
 .upload-form {
   grid-template-columns: 1.6fr 1.2fr 0.8fr 0.7fr 1fr 1.4fr;
 }

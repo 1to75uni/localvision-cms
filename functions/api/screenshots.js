@@ -86,13 +86,14 @@ export async function onRequestPost({ request, env }) {
   const file = form.get('file')
   const deviceId = String(form.get('deviceId') || '').trim()
   const store = String(form.get('store') || '').trim()
+  const effectiveDeviceId = deviceId || store
 
-  if (!deviceId) return json({ ok: false, error: 'deviceId is required' }, 400)
+  if (!effectiveDeviceId && !store) return json({ ok: false, error: 'deviceId or store is required' }, 400)
   if (!file || typeof file === 'string') return json({ ok: false, error: 'file is required' }, 400)
 
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
   const safeStore = store || 'unknown'
-  const key = `system/screenshots/${safeStore}/${deviceId}/${stamp}.png`
+  const key = `system/screenshots/${safeStore}/${effectiveDeviceId || 'store'}/${stamp}.png`
 
   await env.MEDIA.put(key, file.stream(), {
     httpMetadata: {
@@ -100,7 +101,7 @@ export async function onRequestPost({ request, env }) {
       cacheControl: 'public, max-age=31536000',
     },
     customMetadata: {
-      deviceId,
+      deviceId: effectiveDeviceId,
       store: safeStore,
       type: 'screenshot',
     },
@@ -108,7 +109,7 @@ export async function onRequestPost({ request, env }) {
 
   const screenshot = {
     id: `ss_${Date.now()}`,
-    deviceId,
+    deviceId: effectiveDeviceId,
     store: safeStore,
     r2Key: key,
     url: makePublicUrl(request, env, key),
@@ -131,8 +132,8 @@ export async function onRequestPost({ request, env }) {
   await env.DB.prepare(`
     UPDATE devices
     SET last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind('screenshot_done', screenshot.createdAt, deviceId).run()
+    WHERE id = ? OR store = ?
+  `).bind('screenshot_done', screenshot.createdAt, screenshot.deviceId, safeStore).run()
 
   return json({ ok: true, screenshot })
 }

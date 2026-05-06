@@ -74,7 +74,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.5',
+    version: 'v1.6',
     store,
     side,
     targetStore,
