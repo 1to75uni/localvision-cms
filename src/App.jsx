@@ -39,7 +39,7 @@ const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
 const AUTH_STORAGE_KEY = 'localvision-cms-auth-v1-6'
 const ADMIN_PASSWORD = '0213'
-const CMS_VERSION_LABEL = 'CMS Console v1.6.1 R2 AutoSync'
+const CMS_VERSION_LABEL = 'CMS Console v1.6.2 Core01-Based R2 Fixed'
 const DEVICE_ONLINE_TTL_MS = 10 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
@@ -546,7 +546,7 @@ function App() {
 
   async function loadServerData(showMessage = true) {
     try {
-      const payload = await apiRequest('/api/backup')
+      const payload = await apiRequest(`/api/backup?t=${Date.now()}`)
       setData((prev) => ({
         ...prev,
         stores: Array.isArray(payload.stores) ? payload.stores : prev.stores,
@@ -555,10 +555,10 @@ function App() {
         devices: Array.isArray(payload.devices) ? payload.devices : prev.devices,
       }))
       setServerStatus('connected')
-      if (showMessage) showToast(payload.r2Sync?.ok ? 'D1 + R2 기존 자료를 불러왔습니다.' : 'D1 서버 데이터를 불러왔습니다. R2 바인딩은 확인이 필요합니다.')
+      if (showMessage) showToast(payload.r2Sync?.count >= 0 ? `서버 연결 성공: R2 ${payload.r2Sync.count || 0}개 파일 동기화 확인` : 'D1 서버 데이터를 불러왔습니다.')
     } catch (error) {
       setServerStatus('local')
-      if (showMessage) showToast('서버 연결 전입니다. 브라우저 샘플/로컬 저장 모드로 유지됩니다.')
+      if (showMessage) showToast(`서버 연결 실패: ${error?.message || 'API 응답 오류'}`)
     }
   }
 
@@ -1127,7 +1127,7 @@ function App() {
         {toast && <div className="toast">{toast}</div>}
         <form className="login-card" onSubmit={handleAdminLogin}>
           <div className="brand-mark login-mark">LV</div>
-          <p className="eyebrow">LocalVision CMS v1.6.1</p>
+          <p className="eyebrow">LocalVision CMS v1.6.2</p>
           <h1>관리자 비밀번호 입력</h1>
           <p>실전 운영 CMS입니다. 비밀번호를 입력하면 업체·콘텐츠·TV 상태 관리 화면으로 이동합니다.</p>
           <input
@@ -1139,7 +1139,7 @@ function App() {
             onChange={(event) => setPasswordInput(event.target.value)}
           />
           <button className="primary-btn" type="submit">CMS 시작하기</button>
-          <span className="login-helper">APP v8.2 · Player v1.6 · R2 AutoSync</span>
+          <span className="login-helper">APP v8.2 · Player v1.6 · Core01-Based R2</span>
         </form>
       </div>
     )
@@ -1176,20 +1176,20 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>Store Heartbeat v1.6.1</strong>
-          <span>R2 기존 폴더 자동 인식</span>
+          <strong>Store Heartbeat v1.6.2</strong>
+          <span>Core01 서버 연결 방식 + R2 자동 인식</span>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS v1.6.1</p>
+            <p className="eyebrow">LocalVision CMS v1.6.2</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
             <span className={`server-chip ${serverStatus}`}>
-              {serverStatus === 'connected' ? 'D1/R2 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '서버 연결 전 · 로컬 샘플 모드'}
+              {serverStatus === 'connected' ? 'D1/R2 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '서버 연결 전 · API 확인 필요'}
             </span>
             <button className="ghost-btn" onClick={() => loadServerData(true)}>
               <RefreshCw size={16} />
@@ -1212,8 +1212,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.6에서 store 기준 하트비트/명령/캡처/오류 로그를 TV 설치용 URL에 통일했습니다.</strong>
-                <p>TV 설치용 URL에는 deviceId를 붙이지 않고, heartbeat=180000 / ONLINE_TTL_SEC=600 기준으로 운영합니다.</p>
+                <strong>v1.6.2에서 Core01의 안정적인 서버 연결 방식을 기준으로 R2 자동 인식을 보강했습니다.</strong>
+                <p>DB=DB, R2=MEDIA 바인딩을 사용하며, R2 stores/ 폴더를 CMS가 자동으로 읽어옵니다.</p>
               </div>
             </div>
 

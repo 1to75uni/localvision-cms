@@ -6,7 +6,7 @@ export function json(data, status = 200) {
       'access-control-allow-origin': '*',
       'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
       'access-control-allow-headers': 'content-type,range',
-      'cache-control': 'no-store',
+      'cache-control': 'no-store, no-cache, must-revalidate',
     },
   })
 }
@@ -26,7 +26,6 @@ export function safeSqlId(value = '') {
 export function makePublicUrl(request, env, key) {
   const publicBase = String(env.R2_PUBLIC_BASE || '').replace(/\/$/, '')
   if (publicBase) return `${publicBase}/${key}`
-
   const url = new URL(request.url)
   return `${url.origin}/api/media?key=${encodeURIComponent(key)}`
 }
@@ -48,7 +47,25 @@ export async function tryRun(env, sql, binds = []) {
   try {
     return await env.DB.prepare(sql).bind(...binds).run()
   } catch (error) {
-    return { ok: false, error: String(error?.message || error) }
+    return { ok: false, error: String(error?.message || error), sql }
+  }
+}
+
+async function tableColumns(env, table) {
+  try {
+    const res = await env.DB.prepare(`PRAGMA table_info(${table})`).all()
+    return new Set((res.results || []).map((row) => String(row.name)))
+  } catch {
+    return new Set()
+  }
+}
+
+async function addColumnIfMissing(env, table, column, definition) {
+  const cols = await tableColumns(env, table)
+  if (!cols.has(column)) {
+    // D1/SQLite는 ALTER ADD COLUMN에서 CURRENT_TIMESTAMP 같은 non-constant default가 실패할 수 있습니다.
+    // 그래서 migration 보강 컬럼은 모두 안전한 상수 기본값만 사용합니다.
+    await tryRun(env, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
   }
 }
 
@@ -151,17 +168,65 @@ export async function ensureCoreSchema(env) {
     )
   `).run()
 
-  const alters = [
-    `ALTER TABLE contents ADD COLUMN url TEXT DEFAULT ''`,
-    `ALTER TABLE contents ADD COLUMN sort_order INTEGER DEFAULT 0`,
-    `ALTER TABLE contents ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP`,
-    `ALTER TABLE devices ADD COLUMN last_command TEXT DEFAULT ''`,
-    `ALTER TABLE devices ADD COLUMN command_at TEXT DEFAULT ''`,
-    `ALTER TABLE devices ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP`,
-    `ALTER TABLE stores ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP`,
-  ]
+  // 기존 Core01/예전 D1 스키마와 섞여 있어도 API가 죽지 않도록 모든 필수 컬럼을 보강합니다.
+  await addColumnIfMissing(env, 'stores', 'category', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'address', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'contact', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'status', `TEXT DEFAULT '준비중'`)
+  await addColumnIfMissing(env, 'stores', 'plan', `TEXT DEFAULT 'Local Basic'`)
+  await addColumnIfMissing(env, 'stores', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'updated_at', `TEXT DEFAULT ''`)
 
-  for (const sql of alters) await tryRun(env, sql)
+  await addColumnIfMissing(env, 'contents', 'duration', `INTEGER DEFAULT 10`)
+  await addColumnIfMissing(env, 'contents', 'status', `TEXT DEFAULT '사용중'`)
+  await addColumnIfMissing(env, 'contents', 'file_name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'contents', 'url', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'contents', 'sort_order', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'contents', 'updated_at', `TEXT DEFAULT ''`)
+
+  await addColumnIfMissing(env, 'devices', 'role', `TEXT DEFAULT 'tv'`)
+  await addColumnIfMissing(env, 'devices', 'online', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'devices', 'last_seen', `TEXT DEFAULT '아직 접속 없음'`)
+  await addColumnIfMissing(env, 'devices', 'app', `TEXT DEFAULT 'Player Web v1.6'`)
+  await addColumnIfMissing(env, 'devices', 'device_code', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'devices', 'last_command', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'devices', 'command_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'devices', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'devices', 'updated_at', `TEXT DEFAULT ''`)
+
+  await addColumnIfMissing(env, 'notices', 'message', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'media_url', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'link_url', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'file_name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'start_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'end_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'display_mode', `TEXT DEFAULT 'fullscreen'`)
+  await addColumnIfMissing(env, 'notices', 'priority', `TEXT DEFAULT 'normal'`)
+  await addColumnIfMissing(env, 'notices', 'duration_sec', `INTEGER DEFAULT 15`)
+  await addColumnIfMissing(env, 'notices', 'repeat_mode', `TEXT DEFAULT 'always'`)
+  await addColumnIfMissing(env, 'notices', 'is_active', `INTEGER DEFAULT 1`)
+  await addColumnIfMissing(env, 'notices', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'updated_at', `TEXT DEFAULT ''`)
+
+  await addColumnIfMissing(env, 'player_errors', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'player_errors', 'device_id', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'player_errors', 'level', `TEXT DEFAULT 'error'`)
+  await addColumnIfMissing(env, 'player_errors', 'href', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'player_errors', 'user_agent', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'player_errors', 'extra_json', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'player_errors', 'created_at', `TEXT DEFAULT ''`)
+
+  await addColumnIfMissing(env, 'device_screenshots', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'device_screenshots', 'r2_key', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'device_screenshots', 'created_at', `TEXT DEFAULT ''`)
+
+  await tryRun(env, `UPDATE stores SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE stores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE contents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE devices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE devices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE notices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE notices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
 
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_store_side ON contents(store, side)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_devices_store ON devices(store)`)
@@ -173,13 +238,11 @@ export async function listR2Objects(env, prefix = '', limit = 1000) {
   if (!env.MEDIA) return []
   const objects = []
   let cursor = undefined
-
   do {
     const page = await env.MEDIA.list({ prefix, cursor, limit })
     objects.push(...(page.objects || []))
     cursor = page.truncated ? page.cursor : undefined
   } while (cursor)
-
   return objects
 }
 
@@ -207,7 +270,8 @@ export async function scanR2Media(request, env) {
     const parts = key.split('/')
     if (parts.length < 4 || parts[0] !== 'stores') return
 
-    const store = cleanSlug(parts[1]) || parts[1]
+    const rawStore = parts[1]
+    const store = rawStore === '_common' ? '_common' : (cleanSlug(rawStore) || rawStore)
     const side = parts[2]
     const fileName = parts.slice(3).join('/')
     if (!['left', 'right'].includes(side)) return
@@ -248,73 +312,58 @@ export async function scanR2Media(request, env) {
     })
   })
 
-  return {
-    stores: [...storeMap.values()],
-    contents,
-    storeSlugs: [...storeMap.keys()],
-    count: contents.length,
-    mode: 'r2-scan',
-  }
+  return { stores: [...storeMap.values()], contents, storeSlugs: [...storeMap.keys()], count: contents.length, mode: 'r2-scan' }
 }
 
 export async function upsertR2ScanIntoD1(request, env) {
   if (!env.DB) throw new Error('D1 binding DB is missing')
-  if (!env.MEDIA) return { ok: false, reason: 'R2 binding MEDIA is missing', insertedStores: 0, insertedContents: 0 }
+  if (!env.MEDIA) return { ok: false, reason: 'R2 binding MEDIA is missing', insertedStores: 0, insertedContents: 0, insertedDevices: 0 }
 
   await ensureCoreSchema(env)
   const scan = await scanR2Media(request, env)
   let insertedStores = 0
   let insertedContents = 0
   let insertedDevices = 0
+  const errors = []
 
   for (const store of scan.stores) {
-    await env.DB.prepare(`
+    const storeResult = await tryRun(env, `
       INSERT OR IGNORE INTO stores
       (id, name, slug, category, address, contact, status, plan, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `).bind(
-      store.id,
-      store.name,
-      store.slug,
-      store.category,
-      store.address,
-      store.contact,
-      store.status,
-      store.plan,
-      store.createdAt
-    ).run()
-    insertedStores++
+    `, [store.id, store.name, store.slug, store.category, store.address, store.contact, store.status, store.plan, store.createdAt])
+    if (storeResult?.success || storeResult?.meta) insertedStores++
+    if (storeResult?.ok === false) errors.push(storeResult.error)
 
-    await env.DB.prepare(`
+    const deviceResult = await tryRun(env, `
       INSERT OR IGNORE INTO devices
       (id, store, name, role, online, last_seen, app, device_code, created_at, updated_at)
       VALUES (?, ?, ?, 'tv', 0, '아직 접속 없음', 'Player Web v1.6', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-    `).bind(`tv_${store.slug}`, store.slug, `${store.name} TV 1`, `LV-${store.slug.toUpperCase()}-01`).run()
-    insertedDevices++
+    `, [`tv_${store.slug}`, store.slug, `${store.name} TV 1`, `LV-${store.slug.toUpperCase()}-01`])
+    if (deviceResult?.success || deviceResult?.meta) insertedDevices++
+    if (deviceResult?.ok === false) errors.push(deviceResult.error)
   }
 
   for (const content of scan.contents) {
-    await env.DB.prepare(`
-      INSERT OR IGNORE INTO contents
+    const result = await tryRun(env, `
+      INSERT OR REPLACE INTO contents
       (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      content.id,
-      content.store,
-      content.side,
-      content.type,
-      content.title,
-      content.duration,
-      content.status,
-      content.fileName,
-      content.url,
-      content.sortOrder,
-      content.updatedAt
-    ).run()
-    insertedContents++
+    `, [content.id, content.store, content.side, content.type, content.title, content.duration, content.status, content.fileName, content.url, content.sortOrder, content.updatedAt])
+    if (result?.success || result?.meta) insertedContents++
+    if (result?.ok === false) errors.push(result.error)
   }
 
-  return { ok: true, ...scan, insertedStores, insertedContents, insertedDevices }
+  return { ok: errors.length === 0, ...scan, insertedStores, insertedContents, insertedDevices, errors }
+}
+
+export async function safeAll(env, sql, binds = []) {
+  try {
+    const res = await env.DB.prepare(sql).bind(...binds).all()
+    return { ok: true, results: res.results || [] }
+  } catch (error) {
+    return { ok: false, results: [], error: String(error?.message || error) }
+  }
 }
 
 export function onlineTtlSec(env) {
@@ -326,16 +375,12 @@ export function parseLastSeenMs(value, nowMs = Date.now()) {
   const raw = String(value || '').trim()
   if (!raw || raw.includes('아직') || raw.includes('오프라인')) return 0
   if (raw.includes('방금')) return nowMs
-
   const secondAgo = raw.match(/(\d+)\s*초\s*전/)
   if (secondAgo) return nowMs - Number(secondAgo[1]) * 1000
-
   const minuteAgo = raw.match(/(\d+)\s*분\s*전/)
   if (minuteAgo) return nowMs - Number(minuteAgo[1]) * 60 * 1000
-
   const hourAgo = raw.match(/(\d+)\s*시간\s*전/)
   if (hourAgo) return nowMs - Number(hourAgo[1]) * 60 * 60 * 1000
-
   const ko = raw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/)
   if (ko) {
     let hour = Number(ko[5])
@@ -344,10 +389,8 @@ export function parseLastSeenMs(value, nowMs = Date.now()) {
     if (ampm === '오전' && hour === 12) hour = 0
     return Date.UTC(Number(ko[1]), Number(ko[2]) - 1, Number(ko[3]), hour - 9, Number(ko[6]), Number(ko[7] || 0))
   }
-
   const sql = raw.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
   if (sql) return Date.UTC(Number(sql[1]), Number(sql[2]) - 1, Number(sql[3]), Number(sql[4]), Number(sql[5]), Number(sql[6] || 0))
-
   const parsed = Date.parse(raw)
   return Number.isNaN(parsed) ? 0 : parsed
 }
@@ -357,7 +400,6 @@ export function mapDevice(row, env, nowMs = Date.now()) {
   const lastSeenMs = parseLastSeenMs(lastSeenValue, nowMs)
   const ttlSec = onlineTtlSec(env)
   const isFresh = lastSeenMs > 0 && nowMs - lastSeenMs <= ttlSec * 1000
-
   return {
     id: row.id,
     store: row.store,

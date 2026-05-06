@@ -5,43 +5,45 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestGet({ env }) {
-  const result = {
-    ok: true,
-    service: 'LocalVision CMS API',
-    version: 'v1.6.1-r2-autosync',
-    now: new Date().toISOString(),
-    bindings: {
-      DB: Boolean(env.DB),
-      MEDIA: Boolean(env.MEDIA),
-      R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
-      ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
-    },
-    db: 'not-bound',
-    r2: 'not-bound',
-  }
+  const checks = []
+  let dbOk = Boolean(env.DB)
+  let mediaOk = Boolean(env.MEDIA)
+  let r2SampleCount = 0
 
   if (env.DB) {
     try {
       await ensureCoreSchema(env)
-      const row = await env.DB.prepare('SELECT 1 AS ok').first()
-      result.db = row?.ok === 1 ? 'connected' : 'unknown'
+      const probe = await env.DB.prepare('SELECT 1 AS ok').first()
+      dbOk = Boolean(probe?.ok)
     } catch (error) {
-      result.ok = false
-      result.db = `error: ${String(error?.message || error)}`
+      dbOk = false
+      checks.push(`DB: ${String(error?.message || error)}`)
     }
+  } else {
+    checks.push('DB binding missing')
   }
 
   if (env.MEDIA) {
     try {
       const objects = await listR2Objects(env, 'stores/', 20)
-      result.r2 = 'connected'
-      result.r2SampleCount = objects.length
-      result.r2SampleKeys = objects.slice(0, 10).map((item) => item.key)
+      r2SampleCount = objects.length
+      mediaOk = true
     } catch (error) {
-      result.ok = false
-      result.r2 = `error: ${String(error?.message || error)}`
+      mediaOk = false
+      checks.push(`MEDIA: ${String(error?.message || error)}`)
     }
+  } else {
+    checks.push('MEDIA binding missing')
   }
 
-  return json(result, result.ok ? 200 : 500)
+  return json({
+    ok: dbOk,
+    version: 'v1.6.2-core01-based-r2-fixed',
+    DB: dbOk,
+    MEDIA: mediaOk,
+    R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
+    ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
+    r2SampleCount,
+    checks,
+  }, dbOk ? 200 : 500)
 }

@@ -1,33 +1,41 @@
-import { json, ensureCoreSchema, upsertR2ScanIntoD1, mapDevice } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, upsertR2ScanIntoD1, mapDevice, safeAll } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
 }
 
 export async function onRequestGet({ request, env }) {
-  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  const diagnostics = []
 
-  await ensureCoreSchema(env)
+  if (!env.DB) {
+    return json({ ok: false, error: 'D1 binding DB is missing. Pages Functions binding name must be DB.' }, 500)
+  }
 
-  // v1.6.1 핵심 보완:
-  // 기존 R2에 이미 올라가 있는 stores/<store>/left, stores/_common/right 구조를 CMS가 자동 인덱싱합니다.
-  // D1이 비어 있거나 예전 데이터만 있어도 R2를 기준으로 stores/contents/devices를 보강합니다.
+  try {
+    await ensureCoreSchema(env)
+  } catch (error) {
+    // schema 보강 실패가 화면 전체 로딩 실패로 이어지지 않도록 오류를 담아서 반환합니다.
+    diagnostics.push(`ensureCoreSchema: ${String(error?.message || error)}`)
+  }
+
   let r2Sync = { ok: false, reason: 'not-run' }
   try {
     r2Sync = await upsertR2ScanIntoD1(request, env)
   } catch (error) {
     r2Sync = { ok: false, reason: String(error?.message || error) }
+    diagnostics.push(`r2Sync: ${r2Sync.reason}`)
   }
 
-  const stores = await env.DB.prepare(`
+  const stores = await safeAll(env, `
     SELECT
       id, name, slug, category, address, contact, status, plan,
       created_at AS createdAt
     FROM stores
     ORDER BY created_at DESC
-  `).all()
+  `)
+  if (!stores.ok) diagnostics.push(`stores: ${stores.error}`)
 
-  const contents = await env.DB.prepare(`
+  const contents = await safeAll(env, `
     SELECT
       id, store, side, type, title, duration, status,
       file_name AS fileName,
@@ -36,9 +44,10 @@ export async function onRequestGet({ request, env }) {
       updated_at AS updatedAt
     FROM contents
     ORDER BY side ASC, sort_order ASC, updated_at DESC
-  `).all()
+  `)
+  if (!contents.ok) diagnostics.push(`contents: ${contents.error}`)
 
-  const notices = await env.DB.prepare(`
+  const notices = await safeAll(env, `
     SELECT
       id, store, title, type, message,
       media_url AS mediaUrl,
@@ -55,9 +64,10 @@ export async function onRequestGet({ request, env }) {
       updated_at AS updatedAt
     FROM notices
     ORDER BY updated_at DESC
-  `).all()
+  `)
+  if (!notices.ok) diagnostics.push(`notices: ${notices.error}`)
 
-  const devices = await env.DB.prepare(`
+  const devices = await safeAll(env, `
     SELECT
       id, store, name, role, online,
       last_seen AS lastSeen,
@@ -68,12 +78,20 @@ export async function onRequestGet({ request, env }) {
       updated_at AS updatedAt
     FROM devices
     ORDER BY created_at DESC
-  `).all()
+  `)
+  if (!devices.ok) diagnostics.push(`devices: ${devices.error}`)
 
   return json({
     ok: true,
-    version: 'v1.6.1-r2-autosync',
+    version: 'v1.6.2-core01-based-r2-fixed',
     mode: env.MEDIA ? 'D1 + R2 auto sync' : 'D1 only - MEDIA binding missing',
+    bindings: {
+      DB: Boolean(env.DB),
+      MEDIA: Boolean(env.MEDIA),
+      R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
+      ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
+    },
+    diagnostics,
     r2Sync,
     stores: stores.results || [],
     contents: contents.results || [],

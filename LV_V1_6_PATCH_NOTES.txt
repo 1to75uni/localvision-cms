@@ -18,7 +18,7 @@ LocalVision CMS v1.6 Store Heartbeat Final - Patch Notes
 - schema.sql 전체 재실행 금지
 - Cloudflare 환경변수 ONLINE_TTL_SEC=600 설정 권장
 
-## v1.6.1 R2 AutoSync emergency patch
+## v1.6.2 Core01-Based R2 Fixed emergency patch
 
 이번 패치는 기존 R2 버킷 구조를 CMS가 자동으로 읽지 못해 기본/샘플 화면만 보이는 문제를 해결합니다.
 
