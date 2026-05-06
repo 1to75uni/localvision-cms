@@ -140,7 +140,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.4-store-canonical-capture-fixed',
+    version: 'v1.6.5-secure-store-command',
     source,
     store,
     layout: {

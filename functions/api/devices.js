@@ -76,7 +76,7 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: 'v1.6.4-store-canonical-capture-fixed', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: 'v1.6.5-secure-store-command', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -94,7 +94,7 @@ export async function onRequestPost({ request, env }) {
     role: incoming.role || 'tv',
     online: incoming.online ?? 0,
     lastSeen: incoming.lastSeen || '아직 접속 없음',
-    app: incoming.app || 'Player Web v1.6',
+    app: incoming.app || 'Android TV App v8.2',
     deviceCode: incoming.deviceCode || '',
     lastCommand: incoming.lastCommand || '',
     commandAt: incoming.commandAt || '',
@@ -142,7 +142,7 @@ export async function onRequestPatch({ request, env }) {
       role: incoming.role || 'tv',
       online: incoming.online ?? 1,
       lastSeen: incoming.lastSeen ?? new Date().toISOString(),
-      app: incoming.app || 'Player Web v1.6',
+      app: incoming.app || 'Android TV App v8.2',
       deviceCode: incoming.deviceCode || `LV-${incoming.store.toUpperCase()}-01`,
       lastCommand: incoming.lastCommand || '',
       commandAt: incoming.commandAt || '',
@@ -174,7 +174,7 @@ export async function onRequestPatch({ request, env }) {
   const lastSeen = incoming.lastSeen ?? (body.online === true ? new Date().toISOString() : current.last_seen)
   const lastCommand = incoming.lastCommand ?? current.last_command
   const commandAt = incoming.commandAt ?? current.command_at
-  const app = incoming.app || current.app || 'Player Web v1.6'
+  const app = incoming.app || current.app || 'Android TV App v8.2'
   const deviceCode = incoming.deviceCode || current.device_code || ''
   const name = incoming.name || current.name || `${current.store} TV`
   const role = incoming.role || current.role || 'tv'

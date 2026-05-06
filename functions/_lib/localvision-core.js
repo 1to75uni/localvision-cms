@@ -230,7 +230,7 @@ export async function ensureCoreSchema(env) {
       role TEXT DEFAULT 'tv',
       online INTEGER DEFAULT 0,
       last_seen TEXT DEFAULT '아직 접속 없음',
-      app TEXT DEFAULT 'Player Web v1.6',
+      app TEXT DEFAULT 'Android TV App v8.2',
       device_code TEXT DEFAULT '',
       last_command TEXT DEFAULT '',
       command_at TEXT DEFAULT '',
@@ -306,7 +306,7 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'devices', 'role', `TEXT DEFAULT 'tv'`)
   await addColumnIfMissing(env, 'devices', 'online', `INTEGER DEFAULT 0`)
   await addColumnIfMissing(env, 'devices', 'last_seen', `TEXT DEFAULT '아직 접속 없음'`)
-  await addColumnIfMissing(env, 'devices', 'app', `TEXT DEFAULT 'Player Web v1.6'`)
+  await addColumnIfMissing(env, 'devices', 'app', `TEXT DEFAULT 'Android TV App v8.2'`)
   await addColumnIfMissing(env, 'devices', 'device_code', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'devices', 'last_command', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'devices', 'command_at', `TEXT DEFAULT ''`)
@@ -457,7 +457,7 @@ export async function upsertR2ScanIntoD1(request, env) {
     const deviceResult = await tryRun(env, `
       INSERT OR IGNORE INTO devices
       (id, store, name, role, online, last_seen, app, device_code, created_at, updated_at)
-      VALUES (?, ?, ?, 'tv', 0, '아직 접속 없음', 'Player Web v1.6', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, 'tv', 0, '아직 접속 없음', 'Android TV App v8.2', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `, [`tv_${store.slug}`, store.slug, `${store.name} TV 1`, `LV-${store.slug.toUpperCase()}-01`])
     if (deviceResult?.success || deviceResult?.meta) insertedDevices++
     if (deviceResult?.ok === false) errors.push(deviceResult.error)
@@ -521,8 +521,8 @@ export async function safeAll(env, sql, binds = []) {
 }
 
 export function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 600)
-  return Number.isFinite(value) && value > 0 ? value : 600
+  const value = Number(env.ONLINE_TTL_SEC || 120)
+  return Number.isFinite(value) && value > 0 ? value : 120
 }
 
 export function parseLastSeenMs(value, nowMs = Date.now()) {
@@ -604,7 +604,7 @@ export function dedupeDeviceRows(rows = [], env) {
       name: best.name || `${store} TV 1`,
       lastSeen: freshest?.lastSeen ?? freshest?.last_seen ?? best.lastSeen ?? best.last_seen,
       last_seen: freshest?.last_seen ?? freshest?.lastSeen ?? best.last_seen ?? best.lastSeen,
-      app: freshest?.app || best.app || 'Player Web v1.6',
+      app: freshest?.app || best.app || 'Android TV App v8.2',
       deviceCode: best.deviceCode ?? best.device_code ?? `LV-${store.toUpperCase()}-01`,
       device_code: best.device_code ?? best.deviceCode ?? `LV-${store.toUpperCase()}-01`,
       lastCommand: commandRow?.lastCommand ?? commandRow?.last_command ?? best.lastCommand ?? best.last_command ?? '',
@@ -652,7 +652,7 @@ export async function cleanupDuplicateDevices(env) {
         store,
         `${store} TV 1`,
         freshest?.last_seen || freshest?.lastSeen || canonical.last_seen || '아직 접속 없음',
-        freshest?.app || canonical.app || 'Player Web v1.6',
+        freshest?.app || canonical.app || 'Android TV App v8.2',
         canonical.device_code || canonical.deviceCode || `LV-${store.toUpperCase()}-01`,
         commandRow?.last_command || commandRow?.lastCommand || canonical.last_command || '',
         commandRow?.command_at || commandRow?.commandAt || canonical.command_at || '',
