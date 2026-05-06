@@ -34,10 +34,13 @@ import {
   EyeOff,
 } from 'lucide-react'
 
-const STORAGE_KEY = 'localvision-cms-v1-1'
+const STORAGE_KEY = 'localvision-cms-v1-6'
 const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
-const DEVICE_ONLINE_TTL_MS = 3 * 60 * 1000
+const AUTH_STORAGE_KEY = 'localvision-cms-auth-v1-6'
+const ADMIN_PASSWORD = '0213'
+const CMS_VERSION_LABEL = 'CMS Console v1.6'
+const DEVICE_ONLINE_TTL_MS = 10 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
   'https://player-8kv.pages.dev',
@@ -135,17 +138,17 @@ const sampleContents = [
 
 const sampleDevices = [
   {
-    id: 'dv_001',
+    id: 'tv_goobne',
     store: 'goobne',
     name: '굽네치킨 TV 1',
     role: 'tv',
     online: true,
     lastSeen: '방금 전',
-    app: 'Player Web',
+    app: 'Player Web v1.6',
     deviceCode: 'LV-GOOBNE-01',
   },
   {
-    id: 'dv_002',
+    id: 'tv_sbflower',
     store: 'sbflower',
     name: '샛별플라워 TV 1',
     role: 'tv',
@@ -155,13 +158,13 @@ const sampleDevices = [
     deviceCode: 'LV-SBFLOWER-01',
   },
   {
-    id: 'dv_003',
+    id: 'tv_areumcafe',
     store: 'areumcafe',
     name: '아름드리 카페 TV 1',
     role: 'tv',
     online: true,
     lastSeen: '1분 전',
-    app: 'Android TV App',
+    app: 'Android TV App v8.2',
     deviceCode: 'LV-AREUM-01',
   },
 ]
@@ -296,16 +299,17 @@ function loadData() {
   }
 }
 
-function makePlayerUrl(slug, settings, deviceId = '') {
+function makePlayerUrl(slug, settings) {
   const params = new URLSearchParams({
     store: slug,
     apiBase: settings.apiBase,
     refresh: '3600000',
-    heartbeat: '30000',
+    heartbeat: '180000',
+    commandPoll: '15000',
     restart: settings.restart,
     restartMode: settings.restartMode,
     restartJitterSec: settings.restartJitterSec,
-    cacheMax: settings.cacheMax || '60',
+    cacheMax: settings.cacheMax || '20',
     noticePollMs: settings.noticePollMs || '15000',
     bundleMode: 'cache',
     cacheAll: '1',
@@ -313,13 +317,15 @@ function makePlayerUrl(slug, settings, deviceId = '') {
     cacheVia: 'api',
     activateWhenCached: '1',
     fit: 'cover',
+    appCore: '1',
+    appVersion: 'v8.2-store-based-final',
   })
 
-  if (deviceId) {
-    params.set('deviceId', deviceId)
-  }
-
   return `${settings.playerBase}/?${params.toString()}`
+}
+
+function deviceDataKey(device) {
+  return device?.store || device?.id || ''
 }
 
 function getOrigin() {
@@ -363,6 +369,10 @@ function StatusBadge({ status }) {
 }
 
 function App() {
+  const [isAuthed, setIsAuthed] = useState(() => {
+    try { return localStorage.getItem(AUTH_STORAGE_KEY) === 'ok' } catch { return false }
+  })
+  const [passwordInput, setPasswordInput] = useState('')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [data, setData] = useState(loadData)
   const [selectedStore, setSelectedStore] = useState(data.stores[0]?.slug || 'goobne')
@@ -412,7 +422,7 @@ function App() {
   const [newDevice, setNewDevice] = useState({
     name: '',
     store: selectedStore,
-    app: 'Player Web',
+    app: 'Player Web v1.6',
     deviceCode: '',
   })
 
@@ -439,14 +449,29 @@ function App() {
 
   useEffect(() => {
     if (selectedDeviceId) {
-      loadLatestScreenshot(selectedDeviceId)
-      loadPlayerErrors(selectedDeviceId)
+      const device = data.devices.find((item) => item.id === selectedDeviceId || item.store === selectedDeviceId)
+      if (device) {
+        loadLatestScreenshot(device)
+        loadPlayerErrors(device)
+      }
     }
   }, [selectedDeviceId])
 
   function showToast(message) {
     setToast(message)
     window.setTimeout(() => setToast(''), 1800)
+  }
+
+  function handleAdminLogin(event) {
+    event?.preventDefault()
+    if (passwordInput.trim() === ADMIN_PASSWORD) {
+      try { localStorage.setItem(AUTH_STORAGE_KEY, 'ok') } catch {}
+      setIsAuthed(true)
+      setPasswordInput('')
+      return
+    }
+    setPasswordInput('')
+    showToast('비밀번호가 맞지 않습니다.')
   }
 
   const { stores, contents, notices = [], devices, settings } = data
@@ -488,8 +513,9 @@ function App() {
   const offlineDevices = devices.filter((device) => !isDeviceOnline(device))
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) || devices[0]
-  const selectedScreenshot = selectedDevice ? screenshots[selectedDevice.id] : null
-  const selectedPlayerErrors = selectedDevice ? (playerErrors[selectedDevice.id] || []) : []
+  const selectedDeviceKey = selectedDevice ? deviceDataKey(selectedDevice) : ''
+  const selectedScreenshot = selectedDeviceKey ? screenshots[selectedDeviceKey] : null
+  const selectedPlayerErrors = selectedDeviceKey ? (playerErrors[selectedDeviceKey] || []) : []
   const selectedDeviceStore = stores.find((store) => store.slug === selectedDevice?.store)
   const selectedDeviceLeftContents = contents.filter(
     (content) => content.side === 'left' && content.store === selectedDevice?.store
@@ -532,7 +558,7 @@ function App() {
       if (showMessage) showToast('D1 서버 데이터를 불러왔습니다.')
     } catch (error) {
       setServerStatus('local')
-      if (showMessage) showToast('서버 연결 전입니다. 브라우저 저장 모드로 유지됩니다.')
+      if (showMessage) showToast('서버 연결 전입니다. 브라우저 샘플/로컬 저장 모드로 유지됩니다.')
     }
   }
 
@@ -648,13 +674,13 @@ function App() {
     }
 
     const nextDevice = {
-      id: makeId('dv'),
+      id: `tv_${slug}`,
       store: slug,
       name: `${nextStore.name} TV 1`,
       role: 'tv',
       online: false,
       lastSeen: '아직 접속 없음',
-      app: 'Player Web',
+      app: 'Player Web v1.6',
       deviceCode: `LV-${slug.toUpperCase()}-01`,
     }
 
@@ -869,7 +895,7 @@ function App() {
     }
 
     const nextDevice = {
-      id: makeId('dv'),
+      id: `tv_${newDevice.store}`,
       store: newDevice.store,
       name: newDevice.name.trim(),
       role: 'tv',
@@ -884,7 +910,7 @@ function App() {
       method: 'POST',
       body: JSON.stringify(nextDevice),
     })
-    setNewDevice({ name: '', store: selectedStore, app: 'Player Web', deviceCode: '' })
+    setNewDevice({ name: '', store: selectedStore, app: 'Player Web v1.6', deviceCode: '' })
     showToast('단말기가 저장되었습니다.')
   }
 
@@ -906,19 +932,26 @@ function App() {
     sendToServer('/api/devices', {
       method: 'PATCH',
       body: JSON.stringify({
-        id,
+        store: target.store,
         online: updated.online,
         lastSeen: updated.lastSeen,
       }),
     })
   }
 
-  async function sendDeviceCommand(deviceId, command) {
+  async function sendDeviceCommand(target, command) {
+    const targetDevice = typeof target === 'object'
+      ? target
+      : devices.find((device) => device.id === target || device.store === target)
+
+    const targetStore = targetDevice?.store || String(target || '').trim()
+    if (!targetStore) throw new Error('store 코드가 없습니다.')
+
     const now = new Date().toISOString()
 
     updateData({
       devices: devices.map((device) =>
-        device.id === deviceId
+        device.store === targetStore
           ? {
               ...device,
               lastCommand: command,
@@ -931,7 +964,7 @@ function App() {
     await apiRequest('/api/devices', {
       method: 'PATCH',
       body: JSON.stringify({
-        id: deviceId,
+        store: targetStore,
         lastCommand: command,
         commandAt: now,
       }),
@@ -941,9 +974,9 @@ function App() {
     return now
   }
 
-  async function handleRemoteRefresh(deviceId) {
+  async function handleRemoteRefresh(device) {
     try {
-      await sendDeviceCommand(deviceId, 'refresh')
+      await sendDeviceCommand(device, 'refresh')
       showToast('TV 새로고침 요청을 보냈습니다. 앱이 명령을 확인하면 화면을 다시 불러옵니다.')
     } catch (error) {
       showToast(`새로고침 요청 실패: ${error.message}`)
@@ -955,25 +988,30 @@ function App() {
 
     try {
       setIsScreenshotLoading(true)
-      await sendDeviceCommand(selectedDevice.id, 'screenshot')
+      await sendDeviceCommand(selectedDevice, 'screenshot')
       showToast('TV 현재화면 캡처 요청을 보냈습니다. 10~20초 후 이미지가 갱신됩니다.')
 
-      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 12000)
-      window.setTimeout(() => loadLatestScreenshot(selectedDevice.id), 22000)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice), 12000)
+      window.setTimeout(() => loadLatestScreenshot(selectedDevice), 22000)
     } catch (error) {
       showToast(`스크린샷 요청 실패: ${error.message}`)
       setIsScreenshotLoading(false)
     }
   }
 
-  async function loadLatestScreenshot(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function loadLatestScreenshot(target = selectedDevice) {
+    const device = typeof target === 'object'
+      ? target
+      : devices.find((item) => item.id === target || item.store === target)
+    const store = device?.store || String(target || '').trim()
+    if (!store) return
+    const key = store
 
     try {
-      const payload = await apiRequest(`/api/screenshots?deviceId=${encodeURIComponent(deviceId)}`)
+      const payload = await apiRequest(`/api/screenshots?store=${encodeURIComponent(store)}`)
       setScreenshots((prev) => ({
         ...prev,
-        [deviceId]: payload.screenshot,
+        [key]: payload.screenshot,
       }))
       setServerStatus('connected')
     } catch (error) {
@@ -983,28 +1021,38 @@ function App() {
     }
   }
 
-  async function loadPlayerErrors(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function loadPlayerErrors(target = selectedDevice) {
+    const device = typeof target === 'object'
+      ? target
+      : devices.find((item) => item.id === target || item.store === target)
+    const store = device?.store || String(target || '').trim()
+    if (!store) return
+    const key = store
 
     try {
-      const payload = await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}&limit=20`)
+      const payload = await apiRequest(`/api/player-errors?store=${encodeURIComponent(store)}&limit=20`)
       setPlayerErrors((prev) => ({
         ...prev,
-        [deviceId]: Array.isArray(payload.errors) ? payload.errors : [],
+        [key]: Array.isArray(payload.errors) ? payload.errors : [],
       }))
       setServerStatus('connected')
     } catch (error) {
-      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      setPlayerErrors((prev) => ({ ...prev, [key]: [] }))
       setServerStatus('local')
     }
   }
 
-  async function clearPlayerErrors(deviceId = selectedDevice?.id) {
-    if (!deviceId) return
+  async function clearPlayerErrors(target = selectedDevice) {
+    const device = typeof target === 'object'
+      ? target
+      : devices.find((item) => item.id === target || item.store === target)
+    const store = device?.store || String(target || '').trim()
+    if (!store) return
+    const key = store
 
     try {
-      await apiRequest(`/api/player-errors?deviceId=${encodeURIComponent(deviceId)}`, { method: 'DELETE' })
-      setPlayerErrors((prev) => ({ ...prev, [deviceId]: [] }))
+      await apiRequest(`/api/player-errors?store=${encodeURIComponent(store)}`, { method: 'DELETE' })
+      setPlayerErrors((prev) => ({ ...prev, [key]: [] }))
       showToast('오류 로그를 정리했습니다.')
     } catch (error) {
       showToast('오류 로그 정리에 실패했습니다.')
@@ -1073,6 +1121,30 @@ function App() {
     showToast('TV 설치용 URL 설정을 최신 주소로 변경했습니다.')
   }
 
+  if (!isAuthed) {
+    return (
+      <div className="login-shell">
+        {toast && <div className="toast">{toast}</div>}
+        <form className="login-card" onSubmit={handleAdminLogin}>
+          <div className="brand-mark login-mark">LV</div>
+          <p className="eyebrow">LocalVision CMS v1.6</p>
+          <h1>관리자 비밀번호 입력</h1>
+          <p>실전 운영 CMS입니다. 비밀번호를 입력하면 업체·콘텐츠·TV 상태 관리 화면으로 이동합니다.</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            autoFocus
+            placeholder="비밀번호 0213"
+            value={passwordInput}
+            onChange={(event) => setPasswordInput(event.target.value)}
+          />
+          <button className="primary-btn" type="submit">CMS 시작하기</button>
+          <span className="login-helper">APP v8.2 · Player v1.6 · Store Heartbeat</span>
+        </form>
+      </div>
+    )
+  }
+
   return (
     <div className="app-shell">
       {toast && <div className="toast">{toast}</div>}
@@ -1082,7 +1154,7 @@ function App() {
           <div className="brand-mark">LV</div>
           <div>
             <strong>LocalVision</strong>
-            <span>CMS Console v2.3</span>
+            <span>CMS Console v1.6</span>
           </div>
         </div>
 
@@ -1104,20 +1176,20 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>API 미디어 캐시 적용</strong>
-          <span>Player v1.4.1 API 미디어 캐시</span>
+          <strong>Store Heartbeat v1.6</strong>
+          <span>Player v1.6 store heartbeat</span>
         </div>
       </aside>
 
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS Core v1</p>
+            <p className="eyebrow">LocalVision CMS v1.6</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
             <span className={`server-chip ${serverStatus}`}>
-              {serverStatus === 'connected' ? 'D1 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '브라우저 저장 모드'}
+              {serverStatus === 'connected' ? 'D1 서버 연결됨' : serverStatus === 'checking' ? '서버 확인중' : '브라우저 샘플/로컬 저장 모드'}
             </span>
             <button className="ghost-btn" onClick={() => loadServerData(true)}>
               <RefreshCw size={16} />
@@ -1140,8 +1212,8 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v2.1에서 Player v1.4.1 API 미디어 캐시 옵션을 TV 설치용 URL에 적용했습니다.</strong>
-                <p>영상과 이미지를 1시간 단위로 전체 다운로드하고, 다운로드 완료된 묶음만 TV에 적용하는 설정이 자동으로 붙습니다.</p>
+                <strong>v1.6에서 store 기준 하트비트/명령/캡처/오류 로그를 TV 설치용 URL에 통일했습니다.</strong>
+                <p>TV 설치용 URL에는 deviceId를 붙이지 않고, heartbeat=180000 / ONLINE_TTL_SEC=600 기준으로 운영합니다.</p>
               </div>
             </div>
 
@@ -1870,9 +1942,9 @@ function App() {
                   value={newDevice.app}
                   onChange={(event) => setNewDevice({ ...newDevice, app: event.target.value })}
                 >
-                  <option value="Player Web">Player Web</option>
+                  <option value="Player Web v1.6">Player Web v1.6</option>
                   <option value="Fully Kiosk">Fully Kiosk</option>
-                  <option value="Android TV App">Android TV App</option>
+                  <option value="Android TV App v8.2">Android TV App v8.2</option>
                 </select>
                 <input
                   placeholder="단말기 코드 예: LV-GOOBNE-02"
@@ -1890,7 +1962,7 @@ function App() {
               <Eye size={20} />
               <div>
                 <strong>TV 카드를 클릭하면 새로고침과 현재화면 캡처를 요청할 수 있습니다.</strong>
-                <p>마지막 접속이 3분 이상 갱신되지 않으면 자동으로 OFFLINE 처리됩니다.</p>
+                <p>마지막 접속이 10분 이상 갱신되지 않으면 자동으로 OFFLINE 처리됩니다.</p>
               </div>
             </div>
 
@@ -1942,15 +2014,15 @@ function App() {
                     <span>{selectedDevice.name} · {selectedDevice.deviceCode}</span>
                   </div>
                   <div className="button-row">
-                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings, selectedDevice.id))}>
+                    <button className="ghost-btn" onClick={() => handleCopy(makePlayerUrl(selectedDevice.store, settings))}>
                       <Copy size={16} />
                       TV 설치용 URL 복사
                     </button>
-                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings, selectedDevice.id)} target="_blank" rel="noreferrer">
+                    <a className="ghost-btn" href={makePlayerUrl(selectedDevice.store, settings)} target="_blank" rel="noreferrer">
                       <ExternalLink size={16} />
                       TV 화면 열기
                     </a>
-                    <button className="primary-btn" onClick={() => handleRemoteRefresh(selectedDevice.id)}>
+                    <button className="primary-btn" onClick={() => handleRemoteRefresh(selectedDevice)}>
                       <Send size={16} />
                       TV 새로고침 요청
                     </button>
@@ -1994,7 +2066,7 @@ function App() {
                       <p>TV 앱이 업로드한 최신 스크린샷입니다.</p>
                     </div>
                     <div className="button-row">
-                      <button className="mini-btn" onClick={() => loadLatestScreenshot(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => loadLatestScreenshot(selectedDevice)}>
                         <RefreshCw size={14} />
                         캡처 새로고침
                       </button>
@@ -2019,7 +2091,7 @@ function App() {
                       </div>
                       <div className="preview-right">
                         <span>READY</span>
-                        <strong>Android TV App v2.6 필요</strong>
+                        <strong>Android TV App v8.2 필요</strong>
                         <p>앱이 명령을 받으면 이곳에 최신 이미지가 표시됩니다.</p>
                       </div>
                     </div>
@@ -2033,11 +2105,11 @@ function App() {
                       <p className="muted-text">TV 화면에 표시된 오류코드와 Player가 CMS로 보고한 문제입니다.</p>
                     </div>
                     <div className="button-row">
-                      <button className="mini-btn" onClick={() => loadPlayerErrors(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => loadPlayerErrors(selectedDevice)}>
                         <RefreshCw size={14} />
                         로그 새로고침
                       </button>
-                      <button className="mini-btn" onClick={() => clearPlayerErrors(selectedDevice.id)}>
+                      <button className="mini-btn" onClick={() => clearPlayerErrors(selectedDevice)}>
                         <Trash2 size={14} />
                         로그 정리
                       </button>

@@ -24,8 +24,8 @@ async function readBody(request) {
 }
 
 function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 180)
-  return Number.isFinite(value) && value > 0 ? value : 180
+  const value = Number(env.ONLINE_TTL_SEC || 600)
+  return Number.isFinite(value) && value > 0 ? value : 600
 }
 
 function parseLastSeenMs(value, nowMs = Date.now()) {
@@ -49,7 +49,7 @@ function parseLastSeenMs(value, nowMs = Date.now()) {
     if (ampm === '오후' && hour < 12) hour += 12
     if (ampm === '오전' && hour === 12) hour = 0
 
-    // Player가 ko-KR 문자열을 보내면 KST 기준 시간이므로 UTC로 환산합니다.
+    // Player/APP가 ko-KR 문자열을 보내면 KST 기준 시간이므로 UTC로 환산합니다.
     return Date.UTC(
       Number(ko[1]),
       Number(ko[2]) - 1,
@@ -98,6 +98,40 @@ function mapDevice(row, env, nowMs = Date.now()) {
   }
 }
 
+function safeStoreId(store) {
+  const clean = String(store || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '')
+  return clean ? `tv_${clean}` : `tv_${Date.now()}`
+}
+
+function normalizeIncoming(body) {
+  const store = String(body.store || '').trim()
+  const id = String(body.id || body.deviceId || '').trim()
+  return {
+    id: id || (store ? safeStoreId(store) : ''),
+    store,
+    name: String(body.name || '').trim(),
+    role: String(body.role || 'tv').trim() || 'tv',
+    online: typeof body.online === 'boolean' ? (body.online ? 1 : 0) : undefined,
+    lastSeen: body.lastSeen,
+    app: String(body.app || '').trim(),
+    deviceCode: String(body.deviceCode || body.device_code || '').trim(),
+    lastCommand: body.lastCommand,
+    commandAt: body.commandAt,
+  }
+}
+
+async function findDevice(env, { id, store }) {
+  if (id) {
+    const byId = await env.DB.prepare(`SELECT * FROM devices WHERE id = ?`).bind(id).first()
+    if (byId) return byId
+  }
+  if (store) {
+    const byStore = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY created_at DESC LIMIT 1`).bind(store).first()
+    if (byStore) return byStore
+  }
+  return null
+}
+
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
 
@@ -114,7 +148,7 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, devices: (results || []).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: 'v1.6-store-heartbeat', devices: (results || []).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -123,23 +157,24 @@ export async function onRequestPost({ request, env }) {
   const body = await readBody(request)
   if (!body.name || !body.store) return json({ ok: false, error: 'name and store are required' }, 400)
 
+  const incoming = normalizeIncoming(body)
   const device = {
-    id: body.id || `dv_${Date.now()}`,
-    store: body.store,
-    name: body.name,
-    role: body.role || 'tv',
-    online: body.online ? 1 : 0,
-    lastSeen: body.lastSeen || '아직 접속 없음',
-    app: body.app || 'Player Web',
-    deviceCode: body.deviceCode || '',
-    lastCommand: body.lastCommand || '',
-    commandAt: body.commandAt || '',
+    id: incoming.id || safeStoreId(incoming.store),
+    store: incoming.store,
+    name: incoming.name,
+    role: incoming.role || 'tv',
+    online: incoming.online ?? 0,
+    lastSeen: incoming.lastSeen || '아직 접속 없음',
+    app: incoming.app || 'Player Web v1.6',
+    deviceCode: incoming.deviceCode || '',
+    lastCommand: incoming.lastCommand || '',
+    commandAt: incoming.commandAt || '',
   }
 
   await env.DB.prepare(`
     INSERT OR REPLACE INTO devices
     (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM devices WHERE id = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
   `).bind(
     device.id,
     device.store,
@@ -150,7 +185,8 @@ export async function onRequestPost({ request, env }) {
     device.app,
     device.deviceCode,
     device.lastCommand,
-    device.commandAt
+    device.commandAt,
+    device.id
   ).run()
 
   return json({ ok: true, device: mapDevice({ ...device, updatedAt: new Date().toISOString() }, env) })
@@ -160,33 +196,78 @@ export async function onRequestPatch({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
 
   const body = await readBody(request)
-  if (!body.id) return json({ ok: false, error: 'id is required' }, 400)
+  const incoming = normalizeIncoming(body)
 
-  const current = await env.DB.prepare(`SELECT * FROM devices WHERE id = ?`).bind(body.id).first()
+  if (!incoming.id && !incoming.store) {
+    return json({ ok: false, error: 'id or store is required' }, 400)
+  }
+
+  let current = await findDevice(env, incoming)
+
+  // v1.6 MVP 기준: store만 들어와도 TV row를 자동 생성합니다.
+  if (!current && incoming.store) {
+    const auto = {
+      id: incoming.id || safeStoreId(incoming.store),
+      store: incoming.store,
+      name: incoming.name || `${incoming.store} TV`,
+      role: incoming.role || 'tv',
+      online: incoming.online ?? 1,
+      lastSeen: incoming.lastSeen ?? new Date().toISOString(),
+      app: incoming.app || 'Player Web v1.6',
+      deviceCode: incoming.deviceCode || `LV-${incoming.store.toUpperCase()}-01`,
+      lastCommand: incoming.lastCommand || '',
+      commandAt: incoming.commandAt || '',
+    }
+
+    await env.DB.prepare(`
+      INSERT INTO devices
+      (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).bind(
+      auto.id,
+      auto.store,
+      auto.name,
+      auto.role,
+      auto.online,
+      auto.lastSeen,
+      auto.app,
+      auto.deviceCode,
+      auto.lastCommand,
+      auto.commandAt
+    ).run()
+
+    current = await env.DB.prepare(`SELECT * FROM devices WHERE id = ?`).bind(auto.id).first()
+  }
+
   if (!current) return json({ ok: false, error: 'device not found' }, 404)
 
-  const online = typeof body.online === 'boolean' ? (body.online ? 1 : 0) : current.online
-  const lastSeen = body.lastSeen ?? (body.online === true ? new Date().toISOString() : current.last_seen)
-  const lastCommand = body.lastCommand ?? current.last_command
-  const commandAt = body.commandAt ?? current.command_at
+  const online = incoming.online !== undefined ? incoming.online : current.online
+  const lastSeen = incoming.lastSeen ?? (body.online === true ? new Date().toISOString() : current.last_seen)
+  const lastCommand = incoming.lastCommand ?? current.last_command
+  const commandAt = incoming.commandAt ?? current.command_at
+  const app = incoming.app || current.app || 'Player Web v1.6'
+  const deviceCode = incoming.deviceCode || current.device_code || ''
+  const name = incoming.name || current.name || `${current.store} TV`
+  const role = incoming.role || current.role || 'tv'
 
   await env.DB.prepare(`
     UPDATE devices
-    SET online = ?, last_seen = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
+    SET name = ?, role = ?, online = ?, last_seen = ?, app = ?, device_code = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).bind(online, lastSeen, lastCommand, commandAt, body.id).run()
+  `).bind(name, role, online, lastSeen, app, deviceCode, lastCommand, commandAt, current.id).run()
 
   return json({
     ok: true,
+    mode: incoming.store ? 'store-based' : 'id-based',
     device: mapDevice({
-      id: body.id,
+      id: current.id,
       store: current.store,
-      name: current.name,
-      role: current.role,
+      name,
+      role,
       online,
       lastSeen,
-      app: current.app,
-      deviceCode: current.device_code,
+      app,
+      deviceCode,
       lastCommand,
       commandAt,
       updatedAt: new Date().toISOString(),

@@ -915,7 +915,7 @@ tbody tr:hover,
 }
 
 
-/* v1.3 server status */
+/* v1.6 server status */
 .server-chip {
   display: inline-flex;
   align-items: center;
@@ -947,7 +947,7 @@ tbody tr:hover,
 }
 
 
-/* v1.4 player playlist API */
+/* v1.6 player playlist API */
 .api-link-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1452,4 +1452,68 @@ tbody tr:hover,
   .notice-mode-grid {
     grid-template-columns: 1fr;
   }
+}
+
+
+/* v1.6 admin password gate */
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 34%),
+    linear-gradient(135deg, #eef4ff 0%, #f8fafc 52%, #e5edff 100%);
+}
+
+.login-card {
+  width: min(440px, 100%);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 28px;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.16);
+  padding: 34px;
+  display: grid;
+  gap: 14px;
+}
+
+.login-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.login-card p {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.login-card input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  padding: 16px 18px;
+  font-size: 22px;
+  letter-spacing: 0.18em;
+  text-align: center;
+  outline: none;
+  background: #f8fafc;
+}
+
+.login-card input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.login-helper {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
 }

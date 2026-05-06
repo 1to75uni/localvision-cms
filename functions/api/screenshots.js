@@ -19,7 +19,7 @@ async function ensureTable(env) {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS device_screenshots (
       id TEXT PRIMARY KEY,
-      device_id TEXT NOT NULL,
+      device_id TEXT DEFAULT '',
       store TEXT DEFAULT '',
       url TEXT NOT NULL,
       r2_key TEXT DEFAULT '',
@@ -30,6 +30,11 @@ async function ensureTable(env) {
   await env.DB.prepare(`
     CREATE INDEX IF NOT EXISTS idx_device_screenshots_device_created
     ON device_screenshots(device_id, created_at)
+  `).run()
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_device_screenshots_store_created
+    ON device_screenshots(store, created_at)
   `).run()
 }
 
@@ -47,23 +52,15 @@ export async function onRequestGet({ request, env }) {
   await ensureTable(env)
 
   const url = new URL(request.url)
-  const deviceId = url.searchParams.get('deviceId') || ''
-  const store = url.searchParams.get('store') || ''
+  const store = String(url.searchParams.get('store') || '').trim()
+  const deviceId = String(url.searchParams.get('deviceId') || '').trim()
 
-  if (!deviceId && !store) {
-    return json({ ok: false, error: 'deviceId or store is required' }, 400)
+  if (!store && !deviceId) {
+    return json({ ok: false, error: 'store or deviceId is required' }, 400)
   }
 
   let row
-  if (deviceId) {
-    row = await env.DB.prepare(`
-      SELECT id, device_id AS deviceId, store, url, r2_key AS r2Key, created_at AS createdAt
-      FROM device_screenshots
-      WHERE device_id = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-    `).bind(deviceId).first()
-  } else {
+  if (store) {
     row = await env.DB.prepare(`
       SELECT id, device_id AS deviceId, store, url, r2_key AS r2Key, created_at AS createdAt
       FROM device_screenshots
@@ -73,7 +70,17 @@ export async function onRequestGet({ request, env }) {
     `).bind(store).first()
   }
 
-  return json({ ok: true, screenshot: row || null })
+  if (!row && deviceId) {
+    row = await env.DB.prepare(`
+      SELECT id, device_id AS deviceId, store, url, r2_key AS r2Key, created_at AS createdAt
+      FROM device_screenshots
+      WHERE device_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).bind(deviceId).first()
+  }
+
+  return json({ ok: true, mode: store ? 'store-based' : 'deviceId-fallback', screenshot: row || null })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -84,15 +91,16 @@ export async function onRequestPost({ request, env }) {
 
   const form = await request.formData()
   const file = form.get('file')
-  const deviceId = String(form.get('deviceId') || '').trim()
   const store = String(form.get('store') || '').trim()
+  const deviceId = String(form.get('deviceId') || '').trim()
 
-  if (!deviceId) return json({ ok: false, error: 'deviceId is required' }, 400)
+  if (!store && !deviceId) return json({ ok: false, error: 'store or deviceId is required' }, 400)
   if (!file || typeof file === 'string') return json({ ok: false, error: 'file is required' }, 400)
 
-  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
   const safeStore = store || 'unknown'
-  const key = `system/screenshots/${safeStore}/${deviceId}/${stamp}.png`
+  const safeDeviceId = deviceId || `tv_${safeStore}`
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
+  const key = `system/screenshots/${safeStore}/${safeDeviceId}/${stamp}.png`
 
   await env.MEDIA.put(key, file.stream(), {
     httpMetadata: {
@@ -100,7 +108,7 @@ export async function onRequestPost({ request, env }) {
       cacheControl: 'public, max-age=31536000',
     },
     customMetadata: {
-      deviceId,
+      deviceId: safeDeviceId,
       store: safeStore,
       type: 'screenshot',
     },
@@ -108,7 +116,7 @@ export async function onRequestPost({ request, env }) {
 
   const screenshot = {
     id: `ss_${Date.now()}`,
-    deviceId,
+    deviceId: safeDeviceId,
     store: safeStore,
     r2Key: key,
     url: makePublicUrl(request, env, key),
@@ -131,8 +139,8 @@ export async function onRequestPost({ request, env }) {
   await env.DB.prepare(`
     UPDATE devices
     SET last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind('screenshot_done', screenshot.createdAt, deviceId).run()
+    WHERE store = ? OR id = ?
+  `).bind('screenshot_done', screenshot.createdAt, safeStore, safeDeviceId).run()
 
   return json({ ok: true, screenshot })
 }

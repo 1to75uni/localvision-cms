@@ -1,78 +1,48 @@
-# LocalVision CMS Core v1 · NOTICE01
+# LocalVision CMS v1.6 · Store Heartbeat Final
 
-이 CMS는 `LocalVision TV App Core v1` 운영 구조를 기준으로 합니다.
-앱은 한 번 설치한 뒤 거의 수정하지 않고, 이후 기능 업데이트는 CMS와 Player 웹 배포로 처리합니다.
+이 CMS는 `LocalVision Player v1.6` / `LocalVision APP v8.2-store-based-final`과 함께 사용하는 실전 배포 기준 파일입니다.
 
-- build: `LocalVision-Core-v1-NOTICE01`
-- CMS 기능: 업체/콘텐츠 관리, 전체화면 공지, 오류 로그, 강제 새로고침, 스크린샷, Player URL 생성
-- Player/App 연동: TV 앱은 WebView 껍데기 역할을 하고, 실제 기능은 Player와 CMS에서 관리합니다.
+## v1.6 핵심 기준
 
----
+- 운영 기준: `store`
+- TV 설치 URL에는 `deviceId`를 붙이지 않습니다.
+- Player heartbeat 기본값: `180000ms` = 3분
+- APP heartbeat 기본값: `180000ms` = 3분
+- CMS ONLINE 판정 기본값: `600초` = 마지막 접속 10분 이내
+- `/api/devices` PATCH는 `store`만 있어도 업데이트됩니다.
+- 해당 store의 device row가 없으면 `tv_<store>` 형식으로 자동 생성됩니다.
+- 스크린샷 조회와 Player 오류 로그 조회는 store 기준을 우선합니다.
+- 첫 화면 관리자 비밀번호: `0213`
 
-# LocalVision CMS v2.4 Auto Offline
-
-## 핵심 수정
-
-단말기 상태가 `online` DB 값에 고정되어 오래 켜져 보이던 문제를 수정했습니다.
-
-- Player heartbeat가 30초마다 들어옵니다.
-- 마지막 접속 시간이 3분 이상 갱신되지 않으면 CMS에서 자동으로 OFFLINE 처리합니다.
-- `/api/devices`, `/api/backup`, `/api/player-config` 모두 동일한 온라인 판정 로직을 사용합니다.
-- CMS 화면도 30초마다 서버 데이터를 다시 불러와 상태를 갱신합니다.
-
-## 온라인 판정 기준
-
-기본값: 180초
-
-Cloudflare Pages/Workers 환경변수로 아래 값을 주면 조정할 수 있습니다.
+## Cloudflare 환경변수
 
 ```txt
-ONLINE_TTL_SEC=180
+ONLINE_TTL_SEC=600
+R2_PUBLIC_BASE=https://pub-xxxx.r2.dev
 ```
 
-## 교체할 주요 파일
+## 주요 API
 
-- `src/App.jsx`
-- `functions/api/devices.js`
-- `functions/api/backup.js`
-- `functions/api/player-config.js`
+- `GET /api/health` → version `v1.6`
+- `GET /api/player-config?store=<store>` → version `v1.6-store-heartbeat`
+- `PATCH /api/devices` → `{ store, online, lastSeen, app }` 또는 `{ store, lastCommand, commandAt }`
+- `GET /api/screenshots?store=<store>`
+- `GET /api/player-errors?store=<store>`
 
-나머지 파일은 기존 구조 유지를 위해 함께 포함했습니다.
+## 배포 주의
 
-## vSafety-01 추가 기능
+이미 운영 중인 D1/R2는 삭제하지 마세요.
+`schema.sql` 전체 재실행도 권장하지 않습니다. 필요한 migration만 개별 적용하세요.
 
-이번 빌드에는 Player 오류 보고 기능이 추가되었습니다.
+GitHub 저장소 루트에는 아래 파일/폴더가 바로 보여야 합니다.
 
-- 새 API: `/api/player-errors`
-- Player가 보고하는 오류코드 예시:
-  - `LV-STORE-MISSING`
-  - `LV-API-MISSING`
-  - `LV-PLAYLIST-EMPTY`
-  - `LV-MEDIA-MISSING`
-  - `LV-MEDIA-PLAY-FAIL`
-  - `LV-CACHE-CORRUPT`
-- CMS의 단말기 상세 화면에서 TV별 Player 오류 로그를 확인할 수 있습니다.
-- 오류 로그는 D1의 `player_errors` 테이블에 저장됩니다.
+```txt
+index.html
+package.json
+vite.config.js
+src/
+functions/
+database/
+```
 
-Cloudflare D1에 직접 마이그레이션을 적용하려면 `database/migration-v2-1-player-errors.sql` 파일을 사용하세요.
-
-## Notice Safety01 - 전체화면 공지 기능
-
-CMS에 업체별 `전체화면 공지` 탭을 추가했습니다.
-공지 유형은 이미지, 영상, 링크, 텍스트를 지원합니다.
-
-신규 API:
-- `GET /api/notices?store=<store>`: 업체별 공지 목록
-- `GET /api/notices?store=<store>&active=1`: 현재 송출 가능한 활성 공지
-- `POST /api/notices`: 공지 생성/수정
-- `DELETE /api/notices?id=<id>`: 공지 삭제
-- `POST /api/notice-upload`: 공지 이미지/영상 R2 업로드
-
-신규 D1 테이블:
-- `notices`
-
-배포 후 해야 할 일:
-1. `database/migration-v2-2-notices.sql`을 D1에 적용합니다.
-2. CMS에서 업체 선택 후 전체화면 공지를 등록합니다.
-3. Player URL에 `noticePollMs=15000`이 포함되어 있는지 확인합니다.
-4. TV에서 기존 70:30 화면 위로 전체화면 공지가 뜨는지 확인합니다.
+ZIP 파일 자체를 GitHub에 올리면 Cloudflare Pages가 빌드하지 못합니다. 압축을 풀고 내부 파일들을 저장소 루트에 올리세요.

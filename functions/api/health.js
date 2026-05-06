@@ -28,7 +28,7 @@ export async function onRequestGet({ env }) {
     ok: true,
     service: 'LocalVision CMS API',
     db: row?.ok === 1 ? 'connected' : 'unknown',
-    version: 'v1.3',
+    version: 'v1.6',
     now: new Date().toISOString(),
   })
 }

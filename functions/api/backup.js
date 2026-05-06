@@ -24,8 +24,8 @@ async function readBody(request) {
 }
 
 function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 180)
-  return Number.isFinite(value) && value > 0 ? value : 180
+  const value = Number(env.ONLINE_TTL_SEC || 600)
+  return Number.isFinite(value) && value > 0 ? value : 600
 }
 
 function parseLastSeenMs(value, nowMs = Date.now()) {

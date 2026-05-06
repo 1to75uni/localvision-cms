@@ -1,0 +1,19 @@
+LocalVision CMS v1.6 Store Heartbeat Final - Patch Notes
+
+적용 기준:
+- CMS 화면/README/package/API version을 v1.6 기준으로 통일
+- 관리자 첫 화면 비밀번호 0213 추가
+- 운영 기준을 deviceId가 아닌 store로 통일
+- Player URL 생성 시 deviceId 제거
+- heartbeat=180000, commandPoll=15000, cacheMax=20 적용
+- ONLINE_TTL_SEC 기본값 600초 적용
+- /api/devices PATCH store-only 업데이트 및 자동 device row 생성 적용
+- CMS 명령 전송을 store 기준으로 변경
+- 스크린샷 조회를 /api/screenshots?store=<store> 기준으로 변경
+- Player 오류 로그 조회/정리를 /api/player-errors?store=<store> 기준으로 변경
+- 오래된 화면 문구(Player v1.4.1, CMS v2.3, APP v2.6 등) 제거
+
+주의:
+- 운영 D1/R2 삭제 금지
+- schema.sql 전체 재실행 금지
+- Cloudflare 환경변수 ONLINE_TTL_SEC=600 설정 권장

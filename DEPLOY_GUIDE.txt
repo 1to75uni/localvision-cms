@@ -1,4 +1,4 @@
-LocalVision CMS Core01 - Cloudflare Pages 배포 설정
+LocalVision CMS v1.6 - Cloudflare Pages 배포 설정
 
 1) GitHub 저장소 루트에 아래 파일들이 바로 보여야 합니다.
    index.html
@@ -24,13 +24,17 @@ LocalVision CMS Core01 - Cloudflare Pages 배포 설정
    Bucket: localvision-media-ujb
 
 4) Environment variables
-   ONLINE_TTL_SEC=180
+   ONLINE_TTL_SEC=600
    R2_PUBLIC_BASE=https://pub-c2364f607cc54d6d9efbb3d24cfaec29.r2.dev
 
 5) D1 마이그레이션
-   database/schema.sql
+   이미 운영 D1이 있다면 schema.sql 전체 재실행 금지.
+   필요한 경우 아래 migration만 개별 적용.
    database/migration-v2-0-device-screenshots.sql
    database/migration-v2-1-player-errors.sql
    database/migration-v2-2-notices.sql
+
+6) 관리자 진입
+   CMS 첫 화면 비밀번호: 0213
 
 주의: ZIP 파일 자체를 GitHub에 올리면 배포되지 않습니다. 압축을 풀고 내부 파일들을 저장소 루트에 올려야 합니다.
