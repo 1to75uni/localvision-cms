@@ -1,0 +1,2 @@
+이 파일은 package-lock.json, node_modules, src, vite.config.js 없이 만든 GitHub 직접 업로드용입니다.
+Cloudflare가 npm install을 하더라도 설치할 외부 패키지가 없어서 빠르게 지나갑니다.

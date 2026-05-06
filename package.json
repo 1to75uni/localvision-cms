@@ -1,0 +1,11 @@
+{
+  "name": "localvision-cms-v1-6-4-static-upload",
+  "version": "1.6.4-static-upload",
+  "private": true,
+  "description": "LocalVision CMS v1.6.4 prebuilt static deployment. No Vite install required.",
+  "scripts": {
+    "build": "node build-static.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
