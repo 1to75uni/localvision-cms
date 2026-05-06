@@ -140,7 +140,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.5-secure-store-command',
+    version: 'v1.6.8-heartbeat-notice',
     source,
     store,
     layout: {

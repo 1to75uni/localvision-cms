@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS notices (
   display_mode TEXT DEFAULT 'fullscreen',
   priority TEXT DEFAULT 'normal',
   duration_sec INTEGER DEFAULT 15,
-  repeat_mode TEXT DEFAULT 'always',
+  repeat_mode TEXT DEFAULT 'once',
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP

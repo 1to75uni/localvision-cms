@@ -38,7 +38,7 @@ export async function onRequestGet({ env }) {
 
   return json({
     ok: dbOk,
-    version: 'v1.6.7-time-format',
+    version: 'v1.6.8-heartbeat-notice',
     DB: dbOk,
     MEDIA: mediaOk,
     R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),

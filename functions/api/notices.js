@@ -46,7 +46,7 @@ function mapNotice(row) {
     displayMode: row.displayMode || 'fullscreen',
     priority: row.priority || 'normal',
     durationSec: Number(row.durationSec || 15),
-    repeatMode: row.repeatMode || 'always',
+    repeatMode: row.repeatMode || 'once',
     isActive: Boolean(row.isActive),
     createdAt: row.createdAt || '',
     updatedAt: row.updatedAt || '',
@@ -69,7 +69,7 @@ async function ensureTable(env) {
       display_mode TEXT DEFAULT 'fullscreen',
       priority TEXT DEFAULT 'normal',
       duration_sec INTEGER DEFAULT 15,
-      repeat_mode TEXT DEFAULT 'always',
+      repeat_mode TEXT DEFAULT 'once',
       is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -153,7 +153,7 @@ export async function onRequestPost({ request, env }) {
     displayMode: String(body.displayMode || 'fullscreen'),
     priority: String(body.priority || 'normal'),
     durationSec: Number(body.durationSec || 15),
-    repeatMode: String(body.repeatMode || 'always'),
+    repeatMode: String(body.repeatMode || 'once'),
     isActive: toBool(body.isActive, true) ? 1 : 0,
     updatedAt: new Date().toISOString(),
   }

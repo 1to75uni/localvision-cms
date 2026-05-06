@@ -8,4 +8,4 @@ LocalVision CMS v1.6.7 time-format
 
 Cloudflare 추가 작업:
 - R2에는 별도로 할 작업이 없습니다.
-- 기존처럼 Pages 환경변수 R2_PUBLIC_BASE, ONLINE_TTL_SEC=120만 유지하면 됩니다.
+- 기존처럼 Pages 환경변수 R2_PUBLIC_BASE, ONLINE_TTL_SEC=600만 유지하면 됩니다.

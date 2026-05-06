@@ -254,7 +254,7 @@ export async function ensureCoreSchema(env) {
       display_mode TEXT DEFAULT 'fullscreen',
       priority TEXT DEFAULT 'normal',
       duration_sec INTEGER DEFAULT 15,
-      repeat_mode TEXT DEFAULT 'always',
+      repeat_mode TEXT DEFAULT 'once',
       is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -521,8 +521,8 @@ export async function safeAll(env, sql, binds = []) {
 }
 
 export function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 120)
-  return Number.isFinite(value) && value > 0 ? value : 120
+  const value = Number(env.ONLINE_TTL_SEC || 600)
+  return Number.isFinite(value) && value > 0 ? value : 600
 }
 
 export function parseLastSeenMs(value, nowMs = Date.now()) {

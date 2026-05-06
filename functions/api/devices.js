@@ -76,7 +76,7 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: 'v1.6.5-secure-store-command', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: 'v1.6.8-heartbeat-notice', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {

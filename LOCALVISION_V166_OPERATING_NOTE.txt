@@ -11,8 +11,8 @@ LocalVision CMS v1.6.6 simple-login 운영 메모
 - 단말기는 기본 Android TV App v8.2 기준으로 저장합니다.
 
 3) 온라인/오프라인 정책
-- Player URL heartbeat=60000 기준: TV가 60초마다 /api/devices PATCH를 보냅니다.
-- CMS ONLINE 기준: ONLINE_TTL_SEC=120 권장. 마지막 last_seen이 120초를 넘으면 OFFLINE으로 표시됩니다.
+- Player URL heartbeat=300000 기준: TV가 300초마다 /api/devices PATCH를 보냅니다.
+- CMS ONLINE 기준: ONLINE_TTL_SEC=600 권장. 마지막 last_seen이 600초를 넘으면 OFFLINE으로 표시됩니다.
 - R2에는 heartbeat 관련 파일을 따로 만들 필요가 없습니다. heartbeat/online 상태는 D1 devices 테이블 기준입니다.
 
 4) R2 정책
