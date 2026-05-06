@@ -43,6 +43,125 @@ export function isMediaKey(key = '') {
   return Boolean(detectTypeFromName(lower))
 }
 
+
+function canonicalUrl(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    const url = new URL(raw)
+    return decodeURIComponent(url.pathname).replace(/^\/+/, '').split('?')[0]
+  } catch {
+    return decodeURIComponent(raw).replace(/^https?:\/\/[^/]+\//, '').split('?')[0]
+  }
+}
+
+function basename(value = '') {
+  return String(value || '').split('/').pop().split('\\').pop().trim()
+}
+
+function normalizeMediaToken(value = '') {
+  let name = basename(value)
+  if (!name) return ''
+  name = decodeURIComponent(name).split('?')[0].trim().toLowerCase()
+  // CMS 업로드 파일명은 20260506103328-left_1.jpg처럼 timestamp가 앞에 붙습니다.
+  // R2 자동스캔/수동 등록 행과 비교할 때는 이 timestamp를 제거해야 같은 콘텐츠를 2개로 보지 않습니다.
+  name = name.replace(/^\d{8,14}[-_]+/, '')
+  name = name.replace(/^\d{4}[-_]?\d{2}[-_]?\d{2}[-_]?\d{6}[-_]+/, '')
+  name = name.replace(/^copy[-_]+/, '')
+  return name
+}
+
+function contentKey(row = {}) {
+  const store = String(row.store || '').trim()
+  const side = String(row.side || '').trim()
+  const fileName = String(row.fileName ?? row.file_name ?? '').trim()
+  const urlPath = canonicalUrl(row.url || '')
+  const byFile = normalizeMediaToken(fileName)
+  const byUrl = normalizeMediaToken(urlPath)
+  const byTitle = normalizeMediaToken(row.title || '')
+  const token = byFile || byUrl || byTitle
+  if (!store || !side || !token) return ''
+  return `${store}::${side}::${token}`
+}
+
+function contentScore(row = {}) {
+  const id = String(row.id || '')
+  let score = 0
+  // TV 재생에는 URL이 있는 행이 가장 중요합니다. 기존에는 r2_가 낮은 점수를 받아
+  // URL 없는 수동 행이 살아남아 중복/빈 재생목록이 생길 수 있었습니다.
+  if (String(row.url || '').trim()) score += 200
+  if (id.startsWith('ct_')) score += 60
+  if (!id.startsWith('r2_')) score += 30
+  if (String(row.status || '') === '사용중') score += 20
+  if (Number(row.duration || 0) > 0) score += 5
+  if (String(row.title || '').trim()) score += 5
+  score += Number(row.sortOrder ?? row.sort_order ?? 0) ? 1 : 0
+  return score
+}
+
+export function dedupeContentsRows(rows = []) {
+  const map = new Map()
+  for (const row of rows || []) {
+    const key = contentKey(row)
+    if (!key) continue
+    const prev = map.get(key)
+    if (!prev || contentScore(row) >= contentScore(prev)) {
+      map.set(key, row)
+    }
+  }
+  return [...map.values()]
+}
+
+
+export async function cleanupDuplicateContents(env) {
+  if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0 }
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at
+      FROM contents
+      ORDER BY store ASC, side ASC, sort_order ASC, updated_at DESC
+    `).all()
+    const keep = new Set(dedupeContentsRows(results || []).map((row) => row.id))
+    const remove = (results || []).filter((row) => row.id && !keep.has(row.id)).map((row) => row.id)
+    let deleted = 0
+    if (remove.length) {
+      for (let i = 0; i < remove.length; i += 50) {
+        const chunk = remove.slice(i, i + 50)
+        const placeholders = chunk.map(() => '?').join(',')
+        const res = await env.DB.prepare(`DELETE FROM contents WHERE id IN (${placeholders})`).bind(...chunk).run()
+        deleted += res?.meta?.changes || chunk.length
+      }
+    }
+    return { ok: true, deleted, kept: keep.size }
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error), deleted: 0 }
+  }
+}
+
+export async function cleanupSyntheticR2Duplicates(env) {
+  if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0 }
+  try {
+    // R2 자동스캔으로 만들어진 r2_ 행이 같은 store/side/file_name을 가진 CMS 행(ct_ 등)과 겹치면
+    // r2_ 행만 삭제합니다. R2 실제 파일은 건드리지 않습니다.
+    const result = await env.DB.prepare(`
+      DELETE FROM contents
+      WHERE id LIKE 'r2_%'
+        AND COALESCE(file_name, '') <> ''
+        AND EXISTS (
+          SELECT 1
+          FROM contents c2
+          WHERE c2.id NOT LIKE 'r2_%'
+            AND c2.store = contents.store
+            AND c2.side = contents.side
+            AND COALESCE(c2.file_name, '') = COALESCE(contents.file_name, '')
+        )
+    `).run()
+    return { ok: true, deleted: result?.meta?.changes || 0 }
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error), deleted: 0 }
+  }
+}
+
 export async function tryRun(env, sql, binds = []) {
   try {
     return await env.DB.prepare(sql).bind(...binds).run()
@@ -345,16 +464,51 @@ export async function upsertR2ScanIntoD1(request, env) {
   }
 
   for (const content of scan.contents) {
-    const result = await tryRun(env, `
-      INSERT OR REPLACE INTO contents
-      (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [content.id, content.store, content.side, content.type, content.title, content.duration, content.status, content.fileName, content.url, content.sortOrder, content.updatedAt])
-    if (result?.success || result?.meta) insertedContents++
-    if (result?.ok === false) errors.push(result.error)
+    try {
+      const existing = await env.DB.prepare(`
+        SELECT id, url
+        FROM contents
+        WHERE store = ?
+          AND side = ?
+          AND file_name = ?
+        ORDER BY CASE WHEN id LIKE 'r2_%' THEN 1 ELSE 0 END ASC, updated_at DESC
+        LIMIT 1
+      `).bind(content.store, content.side, content.fileName).first()
+
+      if (existing && !String(existing.id || '').startsWith('r2_')) {
+        // 같은 R2 파일을 이미 CMS 업로드 행(ct_)이 관리 중이면 r2_ 중복 행은 만들지 않습니다.
+        // URL이 비어 있는 오래된 행만 보강합니다.
+        await tryRun(env, `
+          UPDATE contents
+          SET url = CASE WHEN COALESCE(url, '') = '' THEN ? ELSE url END,
+              updated_at = CASE WHEN COALESCE(updated_at, '') = '' THEN ? ELSE updated_at END
+          WHERE id = ?
+        `, [content.url, content.updatedAt, existing.id])
+        await tryRun(env, `
+          DELETE FROM contents
+          WHERE id LIKE 'r2_%'
+            AND store = ?
+            AND side = ?
+            AND file_name = ?
+        `, [content.store, content.side, content.fileName])
+        continue
+      }
+
+      const result = await tryRun(env, `
+        INSERT OR REPLACE INTO contents
+        (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [content.id, content.store, content.side, content.type, content.title, content.duration, content.status, content.fileName, content.url, content.sortOrder, content.updatedAt])
+      if (result?.success || result?.meta) insertedContents++
+      if (result?.ok === false) errors.push(result.error)
+    } catch (error) {
+      errors.push(String(error?.message || error))
+    }
   }
 
-  return { ok: errors.length === 0, ...scan, insertedStores, insertedContents, insertedDevices, errors }
+  const cleanup = await cleanupSyntheticR2Duplicates(env)
+
+  return { ok: errors.length === 0, ...scan, insertedStores, insertedContents, insertedDevices, cleanup, errors }
 }
 
 export async function safeAll(env, sql, binds = []) {
@@ -393,6 +547,129 @@ export function parseLastSeenMs(value, nowMs = Date.now()) {
   if (sql) return Date.UTC(Number(sql[1]), Number(sql[2]) - 1, Number(sql[3]), Number(sql[4]), Number(sql[5]), Number(sql[6] || 0))
   const parsed = Date.parse(raw)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+
+function deviceFreshnessScore(row = {}, env, nowMs = Date.now()) {
+  const lastSeenValue = row.lastSeen ?? row.last_seen
+  const lastSeenMs = parseLastSeenMs(lastSeenValue, nowMs)
+  const updatedMs = parseLastSeenMs(row.updatedAt ?? row.updated_at, nowMs)
+  const createdMs = parseLastSeenMs(row.createdAt ?? row.created_at, nowMs)
+  let score = 0
+  if (lastSeenMs) score += lastSeenMs
+  else if (updatedMs) score += updatedMs / 10
+  else if (createdMs) score += createdMs / 100
+  const id = String(row.id || '')
+  const store = String(row.store || '')
+  if (id === `tv_${store}`) score += 10 ** 15
+  if (String(row.lastCommand ?? row.last_command ?? '').trim()) score += 10 ** 8
+  return score
+}
+
+function latestCommandRow(rows = []) {
+  let best = null
+  let bestTime = 0
+  for (const row of rows) {
+    const command = String(row.lastCommand ?? row.last_command ?? '').trim()
+    const commandAt = String(row.commandAt ?? row.command_at ?? '').trim()
+    if (!command || !commandAt) continue
+    const ms = parseLastSeenMs(commandAt) || Date.parse(commandAt) || 0
+    if (!best || ms >= bestTime) {
+      best = row
+      bestTime = ms
+    }
+  }
+  return best
+}
+
+export function dedupeDeviceRows(rows = [], env) {
+  const grouped = new Map()
+  for (const row of rows || []) {
+    const store = cleanSlug(row.store || '') || String(row.store || '').trim()
+    if (!store) continue
+    if (!grouped.has(store)) grouped.set(store, [])
+    grouped.get(store).push({ ...row, store })
+  }
+
+  const result = []
+  const nowMs = Date.now()
+  for (const [store, group] of grouped.entries()) {
+    const best = [...group].sort((a, b) => deviceFreshnessScore(b, env, nowMs) - deviceFreshnessScore(a, env, nowMs))[0]
+    const freshest = [...group].sort((a, b) => (parseLastSeenMs(b.lastSeen ?? b.last_seen, nowMs) || 0) - (parseLastSeenMs(a.lastSeen ?? a.last_seen, nowMs) || 0))[0]
+    const commandRow = latestCommandRow(group)
+    result.push({
+      ...best,
+      id: best.id || `tv_${store}`,
+      store,
+      name: best.name || `${store} TV 1`,
+      lastSeen: freshest?.lastSeen ?? freshest?.last_seen ?? best.lastSeen ?? best.last_seen,
+      last_seen: freshest?.last_seen ?? freshest?.lastSeen ?? best.last_seen ?? best.lastSeen,
+      app: freshest?.app || best.app || 'Player Web v1.6',
+      deviceCode: best.deviceCode ?? best.device_code ?? `LV-${store.toUpperCase()}-01`,
+      device_code: best.device_code ?? best.deviceCode ?? `LV-${store.toUpperCase()}-01`,
+      lastCommand: commandRow?.lastCommand ?? commandRow?.last_command ?? best.lastCommand ?? best.last_command ?? '',
+      last_command: commandRow?.last_command ?? commandRow?.lastCommand ?? best.last_command ?? best.lastCommand ?? '',
+      commandAt: commandRow?.commandAt ?? commandRow?.command_at ?? best.commandAt ?? best.command_at ?? '',
+      command_at: commandRow?.command_at ?? commandRow?.commandAt ?? best.command_at ?? best.commandAt ?? '',
+    })
+  }
+  return result
+}
+
+export async function cleanupDuplicateDevices(env) {
+  if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0, merged: 0 }
+  try {
+    const { results } = await env.DB.prepare(`SELECT * FROM devices ORDER BY store ASC, created_at DESC`).all()
+    const groups = new Map()
+    for (const row of results || []) {
+      const store = cleanSlug(row.store || '') || String(row.store || '').trim()
+      if (!store) continue
+      if (!groups.has(store)) groups.set(store, [])
+      groups.get(store).push({ ...row, store })
+    }
+
+    let deleted = 0
+    let merged = 0
+    for (const [store, rows] of groups.entries()) {
+      if (rows.length <= 1) continue
+      const canonical = rows.find((row) => row.id === `tv_${store}`) || [...rows].sort((a, b) => deviceFreshnessScore(b, env) - deviceFreshnessScore(a, env))[0]
+      const freshest = [...rows].sort((a, b) => (parseLastSeenMs(b.last_seen) || 0) - (parseLastSeenMs(a.last_seen) || 0))[0]
+      const commandRow = latestCommandRow(rows)
+      await env.DB.prepare(`
+        UPDATE devices
+        SET store = ?,
+            name = COALESCE(NULLIF(name, ''), ?),
+            role = COALESCE(NULLIF(role, ''), 'tv'),
+            online = 0,
+            last_seen = ?,
+            app = ?,
+            device_code = ?,
+            last_command = ?,
+            command_at = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(
+        store,
+        `${store} TV 1`,
+        freshest?.last_seen || freshest?.lastSeen || canonical.last_seen || '아직 접속 없음',
+        freshest?.app || canonical.app || 'Player Web v1.6',
+        canonical.device_code || canonical.deviceCode || `LV-${store.toUpperCase()}-01`,
+        commandRow?.last_command || commandRow?.lastCommand || canonical.last_command || '',
+        commandRow?.command_at || commandRow?.commandAt || canonical.command_at || '',
+        canonical.id
+      ).run()
+      const idsToDelete = rows.filter((row) => row.id !== canonical.id).map((row) => row.id)
+      if (idsToDelete.length) {
+        const placeholders = idsToDelete.map(() => '?').join(',')
+        const res = await env.DB.prepare(`DELETE FROM devices WHERE id IN (${placeholders})`).bind(...idsToDelete).run()
+        deleted += res?.meta?.changes || idsToDelete.length
+      }
+      merged += 1
+    }
+    return { ok: true, deleted, merged }
+  } catch (error) {
+    return { ok: false, reason: String(error?.message || error), deleted: 0, merged: 0 }
+  }
 }
 
 export function mapDevice(row, env, nowMs = Date.now()) {

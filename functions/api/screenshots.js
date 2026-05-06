@@ -47,6 +47,39 @@ function makePublicUrl(request, env, key) {
   return `${url.origin}/api/media?key=${encodeURIComponent(key)}`
 }
 
+async function latestR2Screenshot(request, env, store) {
+  if (!env.MEDIA || !store) return null
+  const objects = []
+  let cursor = undefined
+  do {
+    const page = await env.MEDIA.list({ prefix: `system/screenshots/${store}/`, cursor, limit: 1000 })
+    objects.push(...(page.objects || []))
+    cursor = page.truncated ? page.cursor : undefined
+  } while (cursor)
+
+  const latest = objects
+    .filter((obj) => String(obj.key || '').toLowerCase().endsWith('.png'))
+    .sort((a, b) => {
+      const au = a.uploaded ? new Date(a.uploaded).getTime() : 0
+      const bu = b.uploaded ? new Date(b.uploaded).getTime() : 0
+      if (au !== bu) return bu - au
+      return String(b.key || '').localeCompare(String(a.key || ''))
+    })[0]
+
+  if (!latest) return null
+  const parts = latest.key.split('/')
+  const deviceId = parts[3] || `tv_${store}`
+  return {
+    id: `r2_${latest.key.replace(/[^a-zA-Z0-9_-]/g, '_')}`,
+    deviceId,
+    store,
+    url: makePublicUrl(request, env, latest.key),
+    r2Key: latest.key,
+    createdAt: latest.uploaded ? new Date(latest.uploaded).toISOString() : new Date().toISOString(),
+    source: 'r2-fallback',
+  }
+}
+
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   await ensureCoreSchema(env)
@@ -80,6 +113,17 @@ export async function onRequestGet({ request, env }) {
       ORDER BY created_at DESC
       LIMIT 1
     `).bind(deviceId).first()
+  }
+
+  if (!row && store) {
+    row = await latestR2Screenshot(request, env, store)
+    if (row) {
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO device_screenshots
+        (id, device_id, store, url, r2_key, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(row.id, row.deviceId, row.store, row.url, row.r2Key, row.createdAt).run()
+    }
   }
 
   return json({ ok: true, mode: store ? 'store-based' : 'deviceId-fallback', screenshot: row || null })

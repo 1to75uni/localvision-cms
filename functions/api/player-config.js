@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, scanR2Media, mapDevice } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, scanR2Media, mapDevice, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, cleanupDuplicateDevices, dedupeDeviceRows } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -37,6 +37,9 @@ export async function onRequestGet({ request, env }) {
   if (env.DB) {
     try {
       await ensureCoreSchema(env)
+      await cleanupSyntheticR2Duplicates(env)
+      await cleanupDuplicateContents(env)
+      await cleanupDuplicateDevices(env)
       store = await env.DB.prepare(`
         SELECT
           id,
@@ -110,9 +113,9 @@ export async function onRequestGet({ request, env }) {
         ORDER BY created_at DESC
       `).bind(storeSlug).all()
 
-      leftItems = (left.results || []).map(normalizeContent)
-      rightItems = (right.results || []).map(normalizeContent)
-      devices = (deviceRows.results || []).map((device) => mapDevice(device, env))
+      leftItems = dedupeContentsRows(left.results || []).map(normalizeContent)
+      rightItems = dedupeContentsRows(right.results || []).map(normalizeContent)
+      devices = dedupeDeviceRows(deviceRows.results || [], env).map((device) => mapDevice(device, env))
     } catch (error) {
       source = `d1-error: ${String(error?.message || error)}`
     }
@@ -123,10 +126,10 @@ export async function onRequestGet({ request, env }) {
     const foundStore = scan.stores.find((item) => item.slug === storeSlug)
     if (!store && foundStore) store = foundStore
     if (!leftItems.length) {
-      leftItems = scan.contents.filter((item) => item.store === storeSlug && item.side === 'left').map(normalizeContent)
+      leftItems = dedupeContentsRows(scan.contents).filter((item) => item.store === storeSlug && item.side === 'left').map(normalizeContent)
     }
     if (!rightItems.length) {
-      rightItems = scan.contents.filter((item) => item.store === '_common' && item.side === 'right').map(normalizeContent)
+      rightItems = dedupeContentsRows(scan.contents).filter((item) => item.store === '_common' && item.side === 'right').map(normalizeContent)
     }
     source = source === 'd1' ? 'd1+r2-fallback' : `${source}+r2-fallback`
   }
@@ -137,7 +140,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.1-r2-autosync',
+    version: 'v1.6.4-store-canonical-capture-fixed',
     source,
     store,
     layout: {

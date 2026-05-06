@@ -39,7 +39,7 @@ const PLAYER_BASE = 'https://localvision-player.pages.dev'
 const API_BASE = 'https://localvision-cms.pages.dev'
 const AUTH_STORAGE_KEY = 'localvision-cms-auth-v1-6'
 const ADMIN_PASSWORD = '0213'
-const CMS_VERSION_LABEL = 'CMS Console v1.6.2 Core01-Based R2 Fixed'
+const CMS_VERSION_LABEL = 'CMS Console v1.6.4 Store Canonical Capture Fixed'
 const DEVICE_ONLINE_TTL_MS = 10 * 60 * 1000
 const OLD_PLAYER_BASES = [
   'https://localvision-media-ujb-player.pages.dev',
@@ -271,6 +271,83 @@ function cleanSlug(value) {
     .replace(/[^a-z0-9-_]/g, '')
 }
 
+function getBasename(value = '') {
+  return String(value || '').split('/').pop().split('\\').pop().trim()
+}
+
+function canonicalUrlPath(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    const url = new URL(raw)
+    return decodeURIComponent(url.pathname).replace(/^\/+/, '').split('?')[0]
+  } catch {
+    return decodeURIComponent(raw).replace(/^https?:\/\/[^/]+\//, '').split('?')[0]
+  }
+}
+
+function normalizeMediaToken(value = '') {
+  let name = getBasename(value)
+  if (!name) return ''
+  name = decodeURIComponent(name).split('?')[0].trim().toLowerCase()
+  name = name.replace(/^\d{8,14}[-_]+/, '')
+  name = name.replace(/^\d{4}[-_]?\d{2}[-_]?\d{2}[-_]?\d{6}[-_]+/, '')
+  name = name.replace(/^copy[-_]+/, '')
+  return name
+}
+
+function contentDedupeKey(content = {}) {
+  const store = String(content.store || '').trim()
+  const side = String(content.side || '').trim()
+  const fileName = String(content.fileName || content.file_name || '').trim()
+  const urlPath = canonicalUrlPath(content.url || '')
+  const token = normalizeMediaToken(fileName) || normalizeMediaToken(urlPath) || normalizeMediaToken(content.title || '')
+  if (!store || !side || !token) return ''
+  return `${store}::${side}::${token}`
+}
+
+function contentDedupeScore(content = {}) {
+  let score = 0
+  const id = String(content.id || '')
+  if (String(content.url || '').trim()) score += 200
+  if (id.startsWith('ct_')) score += 60
+  if (!id.startsWith('r2_')) score += 30
+  if (String(content.status || '') === '사용중') score += 20
+  if (String(content.title || '').trim()) score += 5
+  if (Number(content.duration || 0) > 0) score += 5
+  return score
+}
+
+function dedupeContents(contents = []) {
+  const map = new Map()
+  for (const content of contents || []) {
+    const key = contentDedupeKey(content)
+    if (!key) continue
+    const prev = map.get(key)
+    if (!prev || contentDedupeScore(content) >= contentDedupeScore(prev)) {
+      map.set(key, content)
+    }
+  }
+  return [...map.values()]
+}
+
+function dedupeDevices(devices = []) {
+  const map = new Map()
+  for (const device of devices || []) {
+    const store = String(device.store || '').trim()
+    if (!store) continue
+    const prev = map.get(store)
+    const currentMs = parseLastSeenTime(device.lastSeen)
+    const prevMs = parseLastSeenTime(prev?.lastSeen)
+    const currentScore = (device.id === `tv_${store}` ? 10 ** 15 : 0) + (currentMs || 0) + (device.lastCommand ? 10 ** 8 : 0)
+    const prevScore = prev ? ((prev.id === `tv_${store}` ? 10 ** 15 : 0) + (prevMs || 0) + (prev.lastCommand ? 10 ** 8 : 0)) : -1
+    if (!prev || currentScore >= prevScore) {
+      map.set(store, device)
+    }
+  }
+  return [...map.values()]
+}
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -289,9 +366,9 @@ function loadData() {
 
     return {
       stores: Array.isArray(parsed.stores) ? parsed.stores : sampleStores,
-      contents: Array.isArray(parsed.contents) ? parsed.contents : sampleContents,
+      contents: dedupeContents(Array.isArray(parsed.contents) ? parsed.contents : sampleContents),
       notices: Array.isArray(parsed.notices) ? parsed.notices : sampleNotices,
-      devices: Array.isArray(parsed.devices) ? parsed.devices : sampleDevices,
+      devices: dedupeDevices(Array.isArray(parsed.devices) ? parsed.devices : sampleDevices),
       settings: nextSettings,
     }
   } catch {
@@ -550,9 +627,9 @@ function App() {
       setData((prev) => ({
         ...prev,
         stores: Array.isArray(payload.stores) ? payload.stores : prev.stores,
-        contents: Array.isArray(payload.contents) ? payload.contents : prev.contents,
+        contents: dedupeContents(Array.isArray(payload.contents) ? payload.contents : prev.contents),
         notices: Array.isArray(payload.notices) ? payload.notices : prev.notices,
-        devices: Array.isArray(payload.devices) ? payload.devices : prev.devices,
+        devices: dedupeDevices(Array.isArray(payload.devices) ? payload.devices : prev.devices),
       }))
       setServerStatus('connected')
       if (showMessage) showToast(payload.r2Sync?.count >= 0 ? `서버 연결 성공: R2 ${payload.r2Sync.count || 0}개 파일 동기화 확인` : 'D1 서버 데이터를 불러왔습니다.')
@@ -750,7 +827,7 @@ function App() {
           headers: {},
         })
 
-        updateData({ contents: [payload.content, ...contents] })
+        updateData({ contents: dedupeContents([payload.content, ...contents]) })
         setServerStatus('connected')
         setNewContent({ title: '', side: 'left', type: 'image', duration: 10, fileName: '' })
         setUploadFile(null)
@@ -785,7 +862,7 @@ function App() {
       updatedAt: getToday(),
     }
 
-    updateData({ contents: [nextContent, ...contents] })
+    updateData({ contents: dedupeContents([nextContent, ...contents]) })
     sendToServer('/api/contents', {
       method: 'POST',
       body: JSON.stringify(nextContent),
@@ -905,7 +982,7 @@ function App() {
       deviceCode: newDevice.deviceCode.trim() || `LV-${newDevice.store.toUpperCase()}-${devices.length + 1}`,
     }
 
-    updateData({ devices: [nextDevice, ...devices] })
+    updateData({ devices: dedupeDevices([nextDevice, ...devices]) })
     sendToServer('/api/devices', {
       method: 'POST',
       body: JSON.stringify(nextDevice),
@@ -1127,7 +1204,7 @@ function App() {
         {toast && <div className="toast">{toast}</div>}
         <form className="login-card" onSubmit={handleAdminLogin}>
           <div className="brand-mark login-mark">LV</div>
-          <p className="eyebrow">LocalVision CMS v1.6.2</p>
+          <p className="eyebrow">LocalVision CMS v1.6.4</p>
           <h1>관리자 비밀번호 입력</h1>
           <p>실전 운영 CMS입니다. 비밀번호를 입력하면 업체·콘텐츠·TV 상태 관리 화면으로 이동합니다.</p>
           <input
@@ -1176,7 +1253,7 @@ function App() {
 
         <div className="side-note">
           <p>현재 단계</p>
-          <strong>Store Heartbeat v1.6.2</strong>
+          <strong>Store Heartbeat v1.6.4</strong>
           <span>Core01 서버 연결 방식 + R2 자동 인식</span>
         </div>
       </aside>
@@ -1184,7 +1261,7 @@ function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <p className="eyebrow">LocalVision CMS v1.6.2</p>
+            <p className="eyebrow">LocalVision CMS v1.6.4</p>
             <h1>업체 · 콘텐츠 · TV 상태를 한 화면에서 관리</h1>
           </div>
           <div className="top-actions">
@@ -1212,7 +1289,7 @@ function App() {
             <div className="notice-card">
               <Database size={20} />
               <div>
-                <strong>v1.6.2에서 Core01의 안정적인 서버 연결 방식을 기준으로 R2 자동 인식을 보강했습니다.</strong>
+                <strong>v1.6.4에서 store별 TV 1대 기준으로 단말기 중복을 정리하고, 캡처 명령/오프라인 판정/콘텐츠 중복 표시를 보완했습니다.</strong>
                 <p>DB=DB, R2=MEDIA 바인딩을 사용하며, R2 stores/ 폴더를 CMS가 자동으로 읽어옵니다.</p>
               </div>
             </div>

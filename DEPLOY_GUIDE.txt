@@ -17,11 +17,11 @@ LocalVision CMS v1.6 - Cloudflare Pages 배포 설정
 3) Cloudflare Pages > Settings > Functions > Bindings
    D1 database binding
    Variable name: DB
-   Database: localvision-db
+   Database: localvision-cms-db
 
    R2 bucket binding
    Variable name: MEDIA
-   Bucket: localvision-media-ujb
+   Bucket: localvision-media-prod
 
 4) Environment variables
    ONLINE_TTL_SEC=600
@@ -39,7 +39,7 @@ LocalVision CMS v1.6 - Cloudflare Pages 배포 설정
 
 주의: ZIP 파일 자체를 GitHub에 올리면 배포되지 않습니다. 압축을 풀고 내부 파일들을 저장소 루트에 올려야 합니다.
 
-## v1.6.2 Core01-Based R2 Fixed 배포 후 즉시 확인
+## v1.6.4 Store Canonical Capture Fixed 배포 후 즉시 확인
 
 1. Cloudflare Pages > Settings > Functions > Bindings 확인
    - D1: binding name 반드시 `DB`

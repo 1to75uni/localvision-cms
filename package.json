@@ -1,6 +1,6 @@
 {
   "name": "localvision-cms",
-  "version": "1.6.2-core01-based-r2-fixed",
+  "version": "1.6.4-store-canonical-capture-fixed",
   "private": true,
   "type": "module",
   "scripts": {

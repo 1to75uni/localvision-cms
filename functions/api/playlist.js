@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, scanR2Media } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, scanR2Media, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -40,6 +40,8 @@ export async function onRequestGet({ request, env }) {
   if (env.DB) {
     try {
       await ensureCoreSchema(env)
+      await cleanupSyntheticR2Duplicates(env)
+      await cleanupDuplicateContents(env)
       const { results } = await env.DB.prepare(`
         SELECT
           id,
@@ -60,7 +62,7 @@ export async function onRequestGet({ request, env }) {
         ORDER BY sort_order ASC, updated_at DESC
       `).bind(targetStore, side).all()
 
-      items = (results || []).map(normalizeItem)
+      items = dedupeContentsRows(results || []).map(normalizeItem)
     } catch (error) {
       source = `d1-error: ${String(error?.message || error)}`
     }
@@ -69,7 +71,7 @@ export async function onRequestGet({ request, env }) {
   // D1에 아직 인덱싱되지 않았거나, 기존 R2 자료만 있는 경우 Player가 빈 화면이 되지 않도록 R2 직접 fallback.
   if (!items.length && env.MEDIA) {
     const scan = await scanR2Media(request, env)
-    items = scan.contents
+    items = dedupeContentsRows(scan.contents)
       .filter((item) => item.store === targetStore && item.side === side && item.status === '사용중')
       .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
       .map(normalizeItem)
@@ -78,7 +80,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.1-r2-autosync',
+    version: 'v1.6.4-store-canonical-capture-fixed',
     source,
     store,
     side,

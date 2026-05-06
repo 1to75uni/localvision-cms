@@ -1,4 +1,4 @@
-import { ensureCoreSchema } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -26,6 +26,8 @@ async function readBody(request) {
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   await ensureCoreSchema(env)
+  await cleanupSyntheticR2Duplicates(env)
+  await cleanupDuplicateContents(env)
 
   const url = new URL(request.url)
   const store = url.searchParams.get('store')
@@ -59,7 +61,7 @@ export async function onRequestGet({ request, env }) {
   const stmt = env.DB.prepare(sql).bind(...params)
   const { results } = await stmt.all()
 
-  return json({ ok: true, contents: results || [] })
+  return json({ ok: true, contents: dedupeContentsRows(results || []) })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -109,6 +111,8 @@ export async function onRequestPost({ request, env }) {
 export async function onRequestDelete({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   await ensureCoreSchema(env)
+  await cleanupSyntheticR2Duplicates(env)
+  await cleanupDuplicateContents(env)
 
   const url = new URL(request.url)
   const id = url.searchParams.get('id')

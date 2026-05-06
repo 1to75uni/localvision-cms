@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, mapDevice, cleanSlug } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -40,7 +40,18 @@ async function findDevice(env, { id, store }) {
     if (byId) return byId
   }
   if (store) {
-    const byStore = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY created_at DESC LIMIT 1`).bind(store).first()
+    const canonical = await env.DB.prepare(`SELECT * FROM devices WHERE id = ? LIMIT 1`).bind(safeStoreId(store)).first()
+    if (canonical) return canonical
+    const byStore = await env.DB.prepare(`
+      SELECT * FROM devices
+      WHERE store = ?
+      ORDER BY
+        CASE WHEN last_seen IS NULL OR last_seen = '' OR last_seen = '아직 접속 없음' THEN 1 ELSE 0 END ASC,
+        last_seen DESC,
+        updated_at DESC,
+        created_at DESC
+      LIMIT 1
+    `).bind(store).first()
     if (byStore) return byStore
   }
   return null
@@ -49,6 +60,8 @@ async function findDevice(env, { id, store }) {
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   await ensureCoreSchema(env)
+
+  await cleanupDuplicateDevices(env)
 
   const { results } = await env.DB.prepare(`
     SELECT
@@ -63,7 +76,7 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: 'v1.6.1-r2-autosync', devices: (results || []).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: 'v1.6.4-store-canonical-capture-fixed', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -166,11 +179,31 @@ export async function onRequestPatch({ request, env }) {
   const name = incoming.name || current.name || `${current.store} TV`
   const role = incoming.role || current.role || 'tv'
 
-  await env.DB.prepare(`
-    UPDATE devices
-    SET name = ?, role = ?, online = ?, last_seen = ?, app = ?, device_code = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(name, role, online, lastSeen, app, deviceCode, lastCommand, commandAt, current.id).run()
+  if (incoming.store) {
+    // MVP는 URL 1개 = TV 1대 = store 기준입니다.
+    // 같은 store에 오래된 device 행이 여러 개 있어도 APP이 어느 행을 먼저 보든 명령이 보이도록 store 전체에 반영합니다.
+    await env.DB.prepare(`
+      UPDATE devices
+      SET name = CASE WHEN id = ? THEN ? ELSE name END,
+          role = COALESCE(NULLIF(role, ''), ?),
+          online = ?,
+          last_seen = ?,
+          app = ?,
+          device_code = CASE WHEN id = ? THEN ? ELSE COALESCE(NULLIF(device_code, ''), ?) END,
+          last_command = ?,
+          command_at = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE store = ?
+    `).bind(current.id, name, role, online, lastSeen, app, current.id, deviceCode, deviceCode, lastCommand, commandAt, incoming.store).run()
+  } else {
+    await env.DB.prepare(`
+      UPDATE devices
+      SET name = ?, role = ?, online = ?, last_seen = ?, app = ?, device_code = ?, last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(name, role, online, lastSeen, app, deviceCode, lastCommand, commandAt, current.id).run()
+  }
+
+  await cleanupDuplicateDevices(env)
 
   return json({
     ok: true,
