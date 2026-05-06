@@ -1,0 +1,46 @@
+LocalVision CMS v1.6 Store Heartbeat Final - Patch Notes
+
+적용 기준:
+- CMS 화면/README/package/API version을 v1.6 기준으로 통일
+- 관리자 첫 화면 비밀번호 0213 추가
+- 운영 기준을 deviceId가 아닌 store로 통일
+- Player URL 생성 시 deviceId 제거
+- heartbeat=180000, commandPoll=15000, cacheMax=20 적용
+- ONLINE_TTL_SEC 기본값 600초 적용
+- /api/devices PATCH store-only 업데이트 및 자동 device row 생성 적용
+- CMS 명령 전송을 store 기준으로 변경
+- 스크린샷 조회를 /api/screenshots?store=<store> 기준으로 변경
+- Player 오류 로그 조회/정리를 /api/player-errors?store=<store> 기준으로 변경
+- 오래된 화면 문구(Player v1.4.1, CMS v2.3, APP v2.6 등) 제거
+
+주의:
+- 운영 D1/R2 삭제 금지
+- schema.sql 전체 재실행 금지
+- Cloudflare 환경변수 ONLINE_TTL_SEC=600 설정 권장
+
+## v1.6.4 Store Canonical Capture Fixed emergency patch
+
+이번 패치는 기존 R2 버킷 구조를 CMS가 자동으로 읽지 못해 기본/샘플 화면만 보이는 문제를 해결합니다.
+
+### 핵심 변경
+- `/api/backup` 실행 시 R2 `stores/` 폴더를 자동 스캔합니다.
+- R2 구조 `stores/<store>/left/*`, `stores/_common/right/*`를 자동으로 D1 `stores`, `contents`, `devices`에 인덱싱합니다.
+- `/api/playlist`는 D1에 데이터가 없으면 R2를 직접 읽어 fallback합니다.
+- `/api/player-config`도 D1 데이터가 없으면 R2를 fallback으로 사용합니다.
+- `/api/r2-sync` 신규 추가: 현재 R2 구조를 직접 확인하고 D1에 동기화합니다.
+- `/api/health`에서 DB/MEDIA/R2_PUBLIC_BASE/ONLINE_TTL_SEC 바인딩 상태를 확인할 수 있습니다.
+
+### Cloudflare Pages 필수 바인딩
+- D1 binding name: `DB`
+- R2 binding name: `MEDIA`
+- R2 bucket: `localvision-media-prod` 또는 실제 운영 버킷
+- Variables:
+  - `R2_PUBLIC_BASE`: 공개 R2 base URL
+  - `ONLINE_TTL_SEC`: `600`
+
+### 배포 후 확인 URL
+- `/api/health`
+- `/api/r2-sync`
+- `/api/backup`
+- `/api/playlist?store=goobne&side=left`
+- `/api/playlist?store=goobne&side=right`

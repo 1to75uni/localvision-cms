@@ -1,0 +1,58 @@
+LocalVision CMS v1.6 - Cloudflare Pages 배포 설정
+
+1) GitHub 저장소 루트에 아래 파일들이 바로 보여야 합니다.
+   index.html
+   package.json
+   vite.config.js
+   src/
+   functions/
+   database/
+
+2) Cloudflare Pages 설정
+   Framework preset: Vite 또는 None
+   Build command: npm run build
+   Build output directory: dist
+   Root directory: 비워두기
+
+3) Cloudflare Pages > Settings > Functions > Bindings
+   D1 database binding
+   Variable name: DB
+   Database: localvision-cms-db
+
+   R2 bucket binding
+   Variable name: MEDIA
+   Bucket: localvision-media-prod
+
+4) Environment variables
+   ONLINE_TTL_SEC=600
+   R2_PUBLIC_BASE=https://pub-c2364f607cc54d6d9efbb3d24cfaec29.r2.dev
+
+5) D1 마이그레이션
+   이미 운영 D1이 있다면 schema.sql 전체 재실행 금지.
+   필요한 경우 아래 migration만 개별 적용.
+   database/migration-v2-0-device-screenshots.sql
+   database/migration-v2-1-player-errors.sql
+   database/migration-v2-2-notices.sql
+
+6) 관리자 진입
+   CMS 첫 화면 비밀번호: 0213
+
+주의: ZIP 파일 자체를 GitHub에 올리면 배포되지 않습니다. 압축을 풀고 내부 파일들을 저장소 루트에 올려야 합니다.
+
+## v1.6.4 Store Canonical Capture Fixed 배포 후 즉시 확인
+
+1. Cloudflare Pages > Settings > Functions > Bindings 확인
+   - D1: binding name 반드시 `DB`
+   - R2: binding name 반드시 `MEDIA`
+   - R2 bucket은 현재 운영 버킷 `localvision-media-prod` 연결
+
+2. Environment variables 확인
+   - `R2_PUBLIC_BASE` = 현재 R2 public base URL
+   - `ONLINE_TTL_SEC` = `600`
+
+3. 배포 후 브라우저에서 확인
+   - `https://CMS도메인/api/health`
+   - `https://CMS도메인/api/r2-sync`
+   - `https://CMS도메인/api/backup`
+
+4. `/api/r2-sync` 결과에서 `stores`와 `contents`가 나오면 R2 연결 성공입니다.
