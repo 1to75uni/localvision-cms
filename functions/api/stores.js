@@ -1,3 +1,4 @@
+import { ensureCoreSchema } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -32,6 +33,7 @@ function cleanSlug(value = '') {
 
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const { results } = await env.DB.prepare(`
     SELECT
@@ -46,6 +48,7 @@ export async function onRequestGet({ env }) {
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const body = await readBody(request)
   const slug = cleanSlug(body.slug)
@@ -84,6 +87,7 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestDelete({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const url = new URL(request.url)
   const slug = cleanSlug(url.searchParams.get('slug') || '')

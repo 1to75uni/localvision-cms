@@ -1,3 +1,4 @@
+import { ensureCoreSchema } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -48,6 +49,7 @@ function makePublicUrl(request, env, key) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   await ensureTable(env)
 

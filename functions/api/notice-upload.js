@@ -1,3 +1,4 @@
+import { ensureCoreSchema } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,

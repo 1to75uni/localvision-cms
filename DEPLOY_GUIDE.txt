@@ -38,3 +38,21 @@ LocalVision CMS v1.6 - Cloudflare Pages 배포 설정
    CMS 첫 화면 비밀번호: 0213
 
 주의: ZIP 파일 자체를 GitHub에 올리면 배포되지 않습니다. 압축을 풀고 내부 파일들을 저장소 루트에 올려야 합니다.
+
+## v1.6.1 R2 AutoSync 배포 후 즉시 확인
+
+1. Cloudflare Pages > Settings > Functions > Bindings 확인
+   - D1: binding name 반드시 `DB`
+   - R2: binding name 반드시 `MEDIA`
+   - R2 bucket은 현재 운영 버킷 `localvision-media-prod` 연결
+
+2. Environment variables 확인
+   - `R2_PUBLIC_BASE` = 현재 R2 public base URL
+   - `ONLINE_TTL_SEC` = `600`
+
+3. 배포 후 브라우저에서 확인
+   - `https://CMS도메인/api/health`
+   - `https://CMS도메인/api/r2-sync`
+   - `https://CMS도메인/api/backup`
+
+4. `/api/r2-sync` 결과에서 `stores`와 `contents`가 나오면 R2 연결 성공입니다.

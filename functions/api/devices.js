@@ -1,15 +1,4 @@
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'access-control-allow-headers': 'content-type',
-      'cache-control': 'no-store',
-    },
-  })
-}
+import { json, ensureCoreSchema, mapDevice, cleanSlug } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -23,95 +12,20 @@ async function readBody(request) {
   }
 }
 
-function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 600)
-  return Number.isFinite(value) && value > 0 ? value : 600
-}
-
-function parseLastSeenMs(value, nowMs = Date.now()) {
-  const raw = String(value || '').trim()
-  if (!raw || raw.includes('아직') || raw.includes('오프라인')) return 0
-  if (raw.includes('방금')) return nowMs
-
-  const minuteAgo = raw.match(/(\d+)\s*분\s*전/)
-  if (minuteAgo) return nowMs - Number(minuteAgo[1]) * 60 * 1000
-
-  const hourAgo = raw.match(/(\d+)\s*시간\s*전/)
-  if (hourAgo) return nowMs - Number(hourAgo[1]) * 60 * 60 * 1000
-
-  const secondAgo = raw.match(/(\d+)\s*초\s*전/)
-  if (secondAgo) return nowMs - Number(secondAgo[1]) * 1000
-
-  const ko = raw.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(오전|오후)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/)
-  if (ko) {
-    let hour = Number(ko[5])
-    const ampm = ko[4]
-    if (ampm === '오후' && hour < 12) hour += 12
-    if (ampm === '오전' && hour === 12) hour = 0
-
-    // Player/APP가 ko-KR 문자열을 보내면 KST 기준 시간이므로 UTC로 환산합니다.
-    return Date.UTC(
-      Number(ko[1]),
-      Number(ko[2]) - 1,
-      Number(ko[3]),
-      hour - 9,
-      Number(ko[6]),
-      Number(ko[7] || 0)
-    )
-  }
-
-  const sql = raw.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (sql) {
-    return Date.UTC(
-      Number(sql[1]),
-      Number(sql[2]) - 1,
-      Number(sql[3]),
-      Number(sql[4]),
-      Number(sql[5]),
-      Number(sql[6] || 0)
-    )
-  }
-
-  const parsed = Date.parse(raw)
-  return Number.isNaN(parsed) ? 0 : parsed
-}
-
-function mapDevice(row, env, nowMs = Date.now()) {
-  const lastSeenMs = parseLastSeenMs(row.lastSeen, nowMs)
-  const ttlSec = onlineTtlSec(env)
-  const isFresh = lastSeenMs > 0 && nowMs - lastSeenMs <= ttlSec * 1000
-
-  return {
-    id: row.id,
-    store: row.store,
-    name: row.name,
-    role: row.role,
-    online: isFresh,
-    onlineTtlSec: ttlSec,
-    lastSeen: row.lastSeen,
-    lastSeenAt: lastSeenMs ? new Date(lastSeenMs).toISOString() : '',
-    app: row.app,
-    deviceCode: row.deviceCode,
-    lastCommand: row.lastCommand,
-    commandAt: row.commandAt,
-    updatedAt: row.updatedAt,
-  }
-}
-
 function safeStoreId(store) {
-  const clean = String(store || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '')
+  const clean = cleanSlug(store)
   return clean ? `tv_${clean}` : `tv_${Date.now()}`
 }
 
 function normalizeIncoming(body) {
-  const store = String(body.store || '').trim()
+  const store = cleanSlug(body.store || '')
   const id = String(body.id || body.deviceId || '').trim()
   return {
     id: id || (store ? safeStoreId(store) : ''),
     store,
     name: String(body.name || '').trim(),
     role: String(body.role || 'tv').trim() || 'tv',
-    online: typeof body.online === 'boolean' ? (body.online ? 1 : 0) : undefined,
+    online: typeof body.online === 'boolean' ? (body.online ? 1 : 0) : typeof body.online === 'number' ? body.online : undefined,
     lastSeen: body.lastSeen,
     app: String(body.app || '').trim(),
     deviceCode: String(body.deviceCode || body.device_code || '').trim(),
@@ -134,6 +48,7 @@ async function findDevice(env, { id, store }) {
 
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const { results } = await env.DB.prepare(`
     SELECT
@@ -148,11 +63,12 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: 'v1.6-store-heartbeat', devices: (results || []).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: 'v1.6.1-r2-autosync', devices: (results || []).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const body = await readBody(request)
   if (!body.name || !body.store) return json({ ok: false, error: 'name and store are required' }, 400)
@@ -194,6 +110,7 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestPatch({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
 
   const body = await readBody(request)
   const incoming = normalizeIncoming(body)
@@ -204,7 +121,6 @@ export async function onRequestPatch({ request, env }) {
 
   let current = await findDevice(env, incoming)
 
-  // v1.6 MVP 기준: store만 들어와도 TV row를 자동 생성합니다.
   if (!current && incoming.store) {
     const auto = {
       id: incoming.id || safeStoreId(incoming.store),

@@ -1,15 +1,4 @@
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,OPTIONS',
-      'access-control-allow-headers': 'content-type',
-      'cache-control': 'no-store',
-    },
-  })
-}
+import { json, ensureCoreSchema, scanR2Media } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -32,10 +21,6 @@ function normalizeItem(row) {
 }
 
 export async function onRequestGet({ request, env }) {
-  if (!env.DB) {
-    return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  }
-
   const url = new URL(request.url)
   const store = url.searchParams.get('store') || ''
   const side = url.searchParams.get('side') || 'left'
@@ -49,32 +34,52 @@ export async function onRequestGet({ request, env }) {
   }
 
   const targetStore = side === 'right' ? '_common' : store
+  let items = []
+  let source = 'd1'
 
-  const { results } = await env.DB.prepare(`
-    SELECT
-      id,
-      store,
-      side,
-      type,
-      title,
-      duration,
-      status,
-      file_name AS fileName,
-      url,
-      sort_order AS sortOrder,
-      updated_at AS updatedAt
-    FROM contents
-    WHERE store = ?
-      AND side = ?
-      AND status = '사용중'
-    ORDER BY sort_order ASC, updated_at DESC
-  `).bind(targetStore, side).all()
+  if (env.DB) {
+    try {
+      await ensureCoreSchema(env)
+      const { results } = await env.DB.prepare(`
+        SELECT
+          id,
+          store,
+          side,
+          type,
+          title,
+          duration,
+          status,
+          file_name AS fileName,
+          url,
+          sort_order AS sortOrder,
+          updated_at AS updatedAt
+        FROM contents
+        WHERE store = ?
+          AND side = ?
+          AND status = '사용중'
+        ORDER BY sort_order ASC, updated_at DESC
+      `).bind(targetStore, side).all()
 
-  const items = (results || []).map(normalizeItem)
+      items = (results || []).map(normalizeItem)
+    } catch (error) {
+      source = `d1-error: ${String(error?.message || error)}`
+    }
+  }
+
+  // D1에 아직 인덱싱되지 않았거나, 기존 R2 자료만 있는 경우 Player가 빈 화면이 되지 않도록 R2 직접 fallback.
+  if (!items.length && env.MEDIA) {
+    const scan = await scanR2Media(request, env)
+    items = scan.contents
+      .filter((item) => item.store === targetStore && item.side === side && item.status === '사용중')
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      .map(normalizeItem)
+    source = 'r2-fallback'
+  }
 
   return json({
     ok: true,
-    version: 'v1.6',
+    version: 'v1.6.1-r2-autosync',
+    source,
     store,
     side,
     targetStore,
