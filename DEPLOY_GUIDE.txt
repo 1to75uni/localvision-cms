@@ -1,0 +1,36 @@
+LocalVision CMS Core01 - Cloudflare Pages 배포 설정
+
+1) GitHub 저장소 루트에 아래 파일들이 바로 보여야 합니다.
+   index.html
+   package.json
+   vite.config.js
+   src/
+   functions/
+   database/
+
+2) Cloudflare Pages 설정
+   Framework preset: Vite 또는 None
+   Build command: npm run build
+   Build output directory: dist
+   Root directory: 비워두기
+
+3) Cloudflare Pages > Settings > Functions > Bindings
+   D1 database binding
+   Variable name: DB
+   Database: localvision-db
+
+   R2 bucket binding
+   Variable name: MEDIA
+   Bucket: localvision-media-ujb
+
+4) Environment variables
+   ONLINE_TTL_SEC=180
+   R2_PUBLIC_BASE=https://pub-c2364f607cc54d6d9efbb3d24cfaec29.r2.dev
+
+5) D1 마이그레이션
+   database/schema.sql
+   database/migration-v2-0-device-screenshots.sql
+   database/migration-v2-1-player-errors.sql
+   database/migration-v2-2-notices.sql
+
+주의: ZIP 파일 자체를 GitHub에 올리면 배포되지 않습니다. 압축을 풀고 내부 파일들을 저장소 루트에 올려야 합니다.
