@@ -1,4 +1,4 @@
-import { json, LV_CORE_VERSION, ensureCoreSchema, listR2Objects, DEFAULT_HEARTBEAT_MS, DEFAULT_COMMAND_POLL_MS, DEFAULT_NOTICE_POLL_MS } from '../_lib/localvision-core.js'
+import { json, LV_CORE_VERSION, ensureCoreSchema, listR2Objects, DEFAULT_HEARTBEAT_MS, DEFAULT_COMMAND_POLL_MS, DEFAULT_NOTICE_POLL_MS, nowUtcIso, nowKstString } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -46,6 +46,9 @@ export async function onRequestGet({ env }) {
     heartbeatMs: DEFAULT_HEARTBEAT_MS,
     commandPollMs: DEFAULT_COMMAND_POLL_MS,
     noticePollMs: DEFAULT_NOTICE_POLL_MS,
+    serverNowUtc: nowUtcIso(),
+    serverNowKst: nowKstString(),
+    heartbeatWritePolicy: 'every-heartbeat-during-mvp-stabilization',
     r2SampleCount,
     checks,
   }, dbOk ? 200 : 500)

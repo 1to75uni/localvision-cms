@@ -1,0 +1,29 @@
+LocalVision CMS v1.7.3 KST Heartbeat Final
+
+반영 내용
+1. 한국 시간(KST) 표시 보강
+   - 서버 응답에 serverNowKst, lastSeenKst, updatedAtKst, createdAtKst 등 추가
+   - CMS 화면에서 기존 lastSeen/createdAt 필드가 한국 시간으로 보이도록 API 응답값 보정
+
+2. 하트비트 오프라인 오판 개선
+   - MVP 안정화 기준으로 heartbeat PATCH가 오면 D1 last_seen을 매번 갱신
+   - 기존 heartbeat-throttled 10분 스킵 로직 제거
+   - /api/devices 응답에 lastSeenSecondsAgo, lastSeenAgo, offlineReason 추가
+
+3. Player 오류 로그 정리
+   - 같은 store/device/errorCode/message/file 조합은 새 로그로 계속 쌓지 않고 count 증가
+   - 오류 로그 createdAt은 CMS 화면에서 한국 시간으로 보이도록 반환
+   - firstSeen/lastSeen UTC/KST 값을 extra에 함께 제공
+
+4. MP4/R2 미디어 안정화
+   - upload.js: .mp4는 무조건 Content-Type: video/mp4 지정
+   - mp4, jpg, jpeg, png, webp만 허용
+   - 0MB 파일 업로드 차단
+   - media.js: mp4 응답 시 video/mp4 보장, HEAD/Range/CORS 헤더 보강
+
+검토 결과
+- 모든 functions JS 파일 node --check 통과
+- 핵심 KST 변환/mapDevice 로직 import 테스트 통과
+
+주의
+- 23:30 이후 전원 꺼짐은 CMS/Player URL상 자동 restart 파라미터가 없으면 TV 자체 절전/전원 스케줄 쪽도 현장 확인 필요

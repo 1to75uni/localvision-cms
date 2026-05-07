@@ -11,6 +11,9 @@ import {
   DEFAULT_CONTENT_CHECK_MS,
   DEFAULT_D1_HEARTBEAT_WRITE_SEC,
   LV_CORE_VERSION,
+  nowUtcIso,
+  nowKstString,
+  toKstString,
 } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
@@ -61,9 +64,12 @@ function configResponse(request, env, store) {
       contentCheck: DEFAULT_CONTENT_CHECK_MS,
       onlineTtlSec: Number(env.ONLINE_TTL_SEC || 600),
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
+      heartbeatWritePolicy: 'every-heartbeat-during-mvp-stabilization',
       defaultDurationSec: 20,
     },
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowUtcIso(),
+    updatedAtKst: nowKstString(),
+    playerUrlUpdatedAtKst: store.playerUrlUpdatedAt || store.player_url_updated_at ? toKstString(store.playerUrlUpdatedAt || store.player_url_updated_at) : '',
   }
 }
 
@@ -119,7 +125,7 @@ export async function onRequestPatch({ request, env }) {
       String(body.status || '운영중').trim(),
       String(body.plan || 'Local Basic').trim(),
       String(body.playerUrl || body.player_url || '').trim(),
-      body.playerUrl || body.player_url ? new Date().toISOString() : ''
+      body.playerUrl || body.player_url ? nowUtcIso() : ''
     ).run()
     current = await findStoreForAppConfig(env, appId || slug)
   } else {
@@ -152,7 +158,7 @@ export async function onRequestPatch({ request, env }) {
       String(body.plan ?? current.plan ?? 'Local Basic').trim(),
       nextPlayerUrl,
       changed ? 1 : 0,
-      new Date().toISOString(),
+      nowUtcIso(),
       current.id
     ).run()
     current = await findStoreForAppConfig(env, appId || slug || current.appId || current.slug)

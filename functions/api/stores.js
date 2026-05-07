@@ -1,4 +1,4 @@
-import { ensureCoreSchema, json, normalizeLvId, buildPlayerUrl, findStoreForAppConfig, nextLvIdFromRows } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, json, normalizeLvId, buildPlayerUrl, findStoreForAppConfig, nextLvIdFromRows, LV_CORE_VERSION, toKstString, nowUtcIso } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -74,12 +74,15 @@ export async function onRequestGet({ request, env }) {
 
   const stores = (results || []).map((store) => ({
     ...store,
+    createdAtKst: store.createdAt ? toKstString(store.createdAt) : '',
+    updatedAtKst: store.updatedAt ? toKstString(store.updatedAt) : '',
+    playerUrlUpdatedAtKst: store.playerUrlUpdatedAt ? toKstString(store.playerUrlUpdatedAt) : '',
     appId: normalizeLvId(store.appId),
     generatedPlayerUrl: buildPlayerUrl(request, env, store.slug, '', store.appId),
     effectivePlayerUrl: buildPlayerUrl(request, env, store.slug, store.playerUrl, store.appId),
   }))
 
-  return json({ ok: true, version: 'v1.7.2-auto-app-id-store-create', stores })
+  return json({ ok: true, version: LV_CORE_VERSION, stores })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -109,8 +112,8 @@ export async function onRequestPost({ request, env }) {
     status: body.status || '준비중',
     plan: body.plan || 'Local Basic',
     playerUrl: String(body.playerUrl || body.player_url || '').trim(),
-    playerUrlUpdatedAt: body.playerUrl || body.player_url ? new Date().toISOString() : '',
-    createdAt: body.createdAt || new Date().toISOString().slice(0, 10),
+    playerUrlUpdatedAt: body.playerUrl || body.player_url ? nowUtcIso() : '',
+    createdAt: body.createdAt || nowUtcIso(),
   }
 
   await env.DB.prepare(`
@@ -190,7 +193,7 @@ export async function onRequestPatch({ request, env }) {
     String(body.plan ?? current.plan ?? 'Local Basic').trim(),
     nextPlayerUrl,
     playerUrlChanged ? 1 : 0,
-    new Date().toISOString(),
+    nowUtcIso(),
     current.id
   ).run()
 

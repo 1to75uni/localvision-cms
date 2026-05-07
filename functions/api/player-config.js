@@ -1,4 +1,4 @@
-import { json, DEFAULT_CONTENT_DURATION, LV_CORE_VERSION, ensureCoreSchema, scanR2Media, mapDevice, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, cleanupDuplicateDevices, dedupeDeviceRows } from '../_lib/localvision-core.js'
+import { json, DEFAULT_CONTENT_DURATION, LV_CORE_VERSION, ensureCoreSchema, scanR2Media, mapDevice, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, nowKstString, toKstString } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -17,6 +17,7 @@ function normalizeContent(row) {
     url: row.url || '',
     sortOrder: Number(row.sortOrder || 0),
     updatedAt: row.updatedAt,
+    updatedAtKst: row.updatedAt ? toKstString(row.updatedAt) : '',
   }
 }
 
@@ -152,6 +153,7 @@ export async function onRequestGet({ request, env }) {
       right: rightItems,
     },
     devices,
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowUtcIso(),
+    updatedAtKst: nowKstString(),
   })
 }

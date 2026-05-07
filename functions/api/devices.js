@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, parseLastSeenMs, onlineTtlSec, DEFAULT_D1_HEARTBEAT_WRITE_SEC, LV_CORE_VERSION } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, LV_CORE_VERSION } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -57,10 +57,6 @@ async function findDevice(env, { id, store }) {
   return null
 }
 
-function d1HeartbeatWriteSec(env) {
-  const value = Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
-  return Number.isFinite(value) && value > 0 ? value : DEFAULT_D1_HEARTBEAT_WRITE_SEC
-}
 
 function isHeartbeatOnlyPatch(body, incoming) {
   return body?.online === true
@@ -134,7 +130,7 @@ export async function onRequestPost({ request, env }) {
     device.id
   ).run()
 
-  return json({ ok: true, device: mapDevice({ ...device, updatedAt: new Date().toISOString() }, env) })
+  return json({ ok: true, device: mapDevice({ ...device, updatedAt: nowUtcIso() }, env) })
 }
 
 export async function onRequestPatch({ request, env }) {
@@ -157,7 +153,7 @@ export async function onRequestPatch({ request, env }) {
       name: incoming.name || `${incoming.store} TV`,
       role: incoming.role || 'tv',
       online: incoming.online ?? 1,
-      lastSeen: incoming.lastSeen ?? new Date().toISOString(),
+      lastSeen: incoming.lastSeen ?? nowUtcIso(),
       app: incoming.app || 'Android TV App v8.2',
       deviceCode: incoming.deviceCode || `LV-${incoming.store.toUpperCase()}-01`,
       lastCommand: incoming.lastCommand || '',
@@ -187,7 +183,7 @@ export async function onRequestPatch({ request, env }) {
   if (!current) return json({ ok: false, error: 'device not found' }, 404)
 
   const online = incoming.online !== undefined ? incoming.online : current.online
-  const lastSeen = incoming.lastSeen ?? (body.online === true ? new Date().toISOString() : current.last_seen)
+  const lastSeen = incoming.lastSeen ?? (body.online === true ? nowUtcIso() : current.last_seen)
   const lastCommand = incoming.lastCommand ?? current.last_command
   const commandAt = incoming.commandAt ?? current.command_at
   const app = incoming.app || current.app || 'Android TV App v8.2'
@@ -196,36 +192,6 @@ export async function onRequestPatch({ request, env }) {
   const role = incoming.role || current.role || 'tv'
 
   const heartbeatOnly = isHeartbeatOnlyPatch(body, incoming)
-  if (heartbeatOnly) {
-    const nowMs = Date.now()
-    const previousMs = parseLastSeenMs(current.last_seen, nowMs)
-    const wasOnline = previousMs > 0 && nowMs - previousMs <= onlineTtlSec(env) * 1000
-    const writeIntervalMs = d1HeartbeatWriteSec(env) * 1000
-    const shouldSkipD1 = wasOnline && previousMs > 0 && nowMs - previousMs < writeIntervalMs
-
-    if (shouldSkipD1) {
-      return json({
-        ok: true,
-        mode: 'heartbeat-throttled',
-        d1Written: false,
-        rule: 'D1 heartbeat write is limited to every 10 minutes or online/offline state changes.',
-        nextD1WriteAfterSec: Math.max(0, Math.ceil((writeIntervalMs - (nowMs - previousMs)) / 1000)),
-        device: mapDevice({
-          id: current.id,
-          store: current.store,
-          name,
-          role,
-          online,
-          lastSeen,
-          app,
-          deviceCode,
-          lastCommand,
-          commandAt,
-          updatedAt: current.updated_at,
-        }, env),
-      })
-    }
-  }
 
   if (incoming.store) {
     // MVP는 URL 1개 = TV 1대 = store 기준입니다.
@@ -255,7 +221,8 @@ export async function onRequestPatch({ request, env }) {
 
   return json({
     ok: true,
-    mode: incoming.store ? 'store-based' : 'id-based',
+    mode: heartbeatOnly ? 'heartbeat-written' : (incoming.store ? 'store-based' : 'id-based'),
+    d1Written: true,
     device: mapDevice({
       id: current.id,
       store: current.store,
@@ -267,7 +234,7 @@ export async function onRequestPatch({ request, env }) {
       deviceCode,
       lastCommand,
       commandAt,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowUtcIso(),
     }, env),
   })
 }

@@ -38,13 +38,26 @@ function safeFileName(fileName = '') {
   return ext ? `${safeBase}.${ext}` : safeBase
 }
 
-function detectType(file) {
-  if (file.type?.startsWith('video/')) return 'video'
-  if (file.type?.startsWith('image/')) return 'image'
+function getExtension(fileName = '') {
+  const name = String(fileName || '').toLowerCase().split('?')[0]
+  const idx = name.lastIndexOf('.')
+  return idx >= 0 ? name.slice(idx + 1) : ''
+}
 
-  const name = file.name.toLowerCase()
-  if (name.endsWith('.mp4') || name.endsWith('.webm') || name.endsWith('.mov')) return 'video'
-  return 'image'
+function detectType(file) {
+  const ext = getExtension(file.name)
+  if (ext === 'mp4') return 'video'
+  if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return 'image'
+  return ''
+}
+
+function contentTypeFor(file) {
+  const ext = getExtension(file.name)
+  if (ext === 'mp4') return 'video/mp4'
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'png') return 'image/png'
+  if (ext === 'webp') return 'image/webp'
+  return file.type || 'application/octet-stream'
 }
 
 function makePublicUrl(request, env, key) {
@@ -71,6 +84,20 @@ export async function onRequestPost({ request, env }) {
     return json({ ok: false, error: 'file is required' }, 400)
   }
 
+  if (!file.size || Number(file.size) <= 0) {
+    return json({ ok: false, error: '빈 파일은 업로드할 수 없습니다. 파일 크기를 확인해 주세요.' }, 400)
+  }
+
+  const ext = getExtension(file.name)
+  const allowed = ['mp4', 'jpg', 'jpeg', 'png', 'webp']
+  if (!allowed.includes(ext)) {
+    return json({ ok: false, error: '허용 파일 형식은 mp4, jpg, jpeg, png, webp 입니다.' }, 400)
+  }
+
+  if (file.type?.startsWith('video/') && ext !== 'mp4') {
+    return json({ ok: false, error: '영상은 MP4 파일만 업로드할 수 있습니다.' }, 400)
+  }
+
   if (!title) {
     return json({ ok: false, error: 'title is required' }, 400)
   }
@@ -92,7 +119,7 @@ export async function onRequestPost({ request, env }) {
 
   await env.MEDIA.put(key, file.stream(), {
     httpMetadata: {
-      contentType: file.type || 'application/octet-stream',
+      contentType: contentTypeFor(file),
       cacheControl: 'public, max-age=31536000',
     },
     customMetadata: {
@@ -110,7 +137,7 @@ export async function onRequestPost({ request, env }) {
     side,
     type,
     title,
-    duration: duration || DEFAULT_CONTENT_DURATION,
+    duration: Number.isFinite(duration) && duration > 0 ? duration : DEFAULT_CONTENT_DURATION,
     status: '사용중',
     fileName,
     url: makePublicUrl(request, env, key),

@@ -23,6 +23,60 @@ export function safeSqlId(value = '') {
   return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
+
+export const KST_OFFSET_MS = 9 * 60 * 60 * 1000
+
+export function toUtcIso(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString()
+}
+
+export function toKstString(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const kst = new Date(date.getTime() + KST_OFFSET_MS)
+  const yyyy = String(kst.getUTCFullYear()).padStart(4, '0')
+  const mm = String(kst.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(kst.getUTCDate()).padStart(2, '0')
+  const hh = String(kst.getUTCHours()).padStart(2, '0')
+  const mi = String(kst.getUTCMinutes()).padStart(2, '0')
+  const ss = String(kst.getUTCSeconds()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`
+}
+
+export function nowUtcIso() {
+  return new Date().toISOString()
+}
+
+export function nowKstString() {
+  return toKstString(new Date())
+}
+
+export function secondsAgoText(seconds) {
+  const sec = Math.max(0, Math.floor(Number(seconds || 0)))
+  if (sec < 5) return '방금 전'
+  if (sec < 60) return `${sec}초 전`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}분 전`
+  const hour = Math.floor(min / 60)
+  if (hour < 24) return `${hour}시간 전`
+  const day = Math.floor(hour / 24)
+  return `${day}일 전`
+}
+
+export function addTimeFields(row = {}, fields = []) {
+  const output = { ...row }
+  for (const field of fields) {
+    const value = row[field]
+    const ms = parseLastSeenMs(value)
+    const prefix = field.replace(/At$/, '').replace(/_at$/, '')
+    output[`${prefix}Utc`] = ms ? new Date(ms).toISOString() : ''
+    output[`${prefix}Kst`] = ms ? toKstString(ms) : ''
+  }
+  return output
+}
+
 export function makePublicUrl(request, env, key) {
   const publicBase = String(env.R2_PUBLIC_BASE || '').replace(/\/$/, '')
   if (publicBase) return `${publicBase}/${key}`
@@ -44,13 +98,13 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.7.2-auto-app-id-store-create'
+export const LV_CORE_VERSION = 'v1.7.3-kst-heartbeat-final'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
 export const DEFAULT_NOTICE_POLL_MS = 60000
 export const DEFAULT_CONTENT_CHECK_MS = 480000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 0
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -818,7 +872,18 @@ export function mapDevice(row, env, nowMs = Date.now()) {
   const lastSeenValue = row.lastSeen ?? row.last_seen
   const lastSeenMs = parseLastSeenMs(lastSeenValue, nowMs)
   const ttlSec = onlineTtlSec(env)
+  const secondsAgo = lastSeenMs ? Math.max(0, Math.floor((nowMs - lastSeenMs) / 1000)) : null
   const isFresh = lastSeenMs > 0 && nowMs - lastSeenMs <= ttlSec * 1000
+  const lastSeenUtc = lastSeenMs ? new Date(lastSeenMs).toISOString() : ''
+  const lastSeenKst = lastSeenMs ? toKstString(lastSeenMs) : ''
+  const updatedMs = parseLastSeenMs(row.updatedAt ?? row.updated_at, nowMs)
+  const commandMs = parseLastSeenMs(row.commandAt ?? row.command_at, nowMs)
+  const offlineReason = isFresh
+    ? ''
+    : lastSeenMs
+      ? `heartbeat 미수신: 마지막 신호 이후 ${secondsAgoText(secondsAgo)} 경과`
+      : 'heartbeat 기록 없음'
+
   return {
     id: row.id,
     store: row.store,
@@ -826,12 +891,26 @@ export function mapDevice(row, env, nowMs = Date.now()) {
     role: row.role,
     online: isFresh,
     onlineTtlSec: ttlSec,
-    lastSeen: lastSeenValue,
-    lastSeenAt: lastSeenMs ? new Date(lastSeenMs).toISOString() : '',
+    lastSeen: lastSeenKst || lastSeenValue || '아직 접속 없음',
+    lastSeenRaw: lastSeenValue,
+    lastSeenAt: lastSeenUtc,
+    lastSeenUtc,
+    lastSeenKst,
+    lastSeenSecondsAgo: secondsAgo,
+    lastSeenAgo: secondsAgo === null ? '기록 없음' : secondsAgoText(secondsAgo),
+    offlineReason,
+    serverNowUtc: new Date(nowMs).toISOString(),
+    serverNowKst: toKstString(nowMs),
     app: row.app,
     deviceCode: row.deviceCode ?? row.device_code,
     lastCommand: row.lastCommand ?? row.last_command,
-    commandAt: row.commandAt ?? row.command_at,
-    updatedAt: row.updatedAt ?? row.updated_at,
+    commandAt: commandMs ? toKstString(commandMs) : (row.commandAt ?? row.command_at ?? ''),
+    commandAtRaw: row.commandAt ?? row.command_at ?? '',
+    commandAtUtc: commandMs ? new Date(commandMs).toISOString() : '',
+    commandAtKst: commandMs ? toKstString(commandMs) : '',
+    updatedAt: updatedMs ? toKstString(updatedMs) : (row.updatedAt ?? row.updated_at ?? ''),
+    updatedAtRaw: row.updatedAt ?? row.updated_at ?? '',
+    updatedAtUtc: updatedMs ? new Date(updatedMs).toISOString() : '',
+    updatedAtKst: updatedMs ? toKstString(updatedMs) : '',
   }
 }

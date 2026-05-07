@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-7-2-auto-app-id-store-create",
-  "version": "1.7.2-auto-app-id-store-create",
+  "name": "localvision-cms-v1-7-3-kst-heartbeat-final",
+  "version": "1.7.3-kst-heartbeat-final",
   "private": true,
-  "description": "LocalVision CMS v1.7.2 with integrated lv001 APP ID management inside the main CMS UI, app-config, default 20s duration, 10min online TTL, and D1 heartbeat throttling.",
+  "description": "LocalVision CMS v1.7.3: KST time display, every-heartbeat D1 last_seen update, grouped Player error logs, MP4 video/mp4 upload/media headers.",
   "scripts": {
     "build": "node build-static.js"
   },
