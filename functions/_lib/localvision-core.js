@@ -44,7 +44,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.6.9-lv-id-app-config'
+export const LV_CORE_VERSION = 'v1.7.1-lv-id-react-integrated-cms'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -140,18 +140,39 @@ export function playerBaseUrl(request, env) {
   return 'https://localvision-player.pages.dev'
 }
 
+function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
+  const cmsOrigin = new URL(request.url).origin
+  const normalizedAppId = normalizeLvId(appId)
+  if (storeSlug && !url.searchParams.has('store')) url.searchParams.set('store', storeSlug)
+  if (normalizedAppId && !url.searchParams.has('id')) url.searchParams.set('id', normalizedAppId)
+  if (!url.searchParams.has('apiBase')) url.searchParams.set('apiBase', cmsOrigin)
+  if (!url.searchParams.has('refresh')) url.searchParams.set('refresh', String(DEFAULT_CONTENT_CHECK_MS))
+  if (!url.searchParams.has('heartbeat')) url.searchParams.set('heartbeat', String(DEFAULT_HEARTBEAT_MS))
+  if (!url.searchParams.has('commandPoll')) url.searchParams.set('commandPoll', String(DEFAULT_COMMAND_POLL_MS))
+  if (!url.searchParams.has('noticePollMs')) url.searchParams.set('noticePollMs', String(DEFAULT_NOTICE_POLL_MS))
+  if (!url.searchParams.has('cacheMax')) url.searchParams.set('cacheMax', '20')
+  if (!url.searchParams.has('bundleMode')) url.searchParams.set('bundleMode', 'cache')
+  if (!url.searchParams.has('cacheAll')) url.searchParams.set('cacheAll', '1')
+  if (!url.searchParams.has('videoMode')) url.searchParams.set('videoMode', 'cache')
+  if (!url.searchParams.has('cacheVia')) url.searchParams.set('cacheVia', 'api')
+  if (!url.searchParams.has('activateWhenCached')) url.searchParams.set('activateWhenCached', '1')
+  if (!url.searchParams.has('fit')) url.searchParams.set('fit', 'cover')
+  return url
+}
+
 export function buildPlayerUrl(request, env, storeSlug, overrideUrl = '', appId = '') {
   const override = String(overrideUrl || '').trim()
-  if (override) return override
+  if (override) {
+    try {
+      const url = new URL(override)
+      return applyPlayerUrlDefaults(request, env, url, storeSlug, appId).toString()
+    } catch {
+      return override
+    }
+  }
   const base = playerBaseUrl(request, env)
   const url = new URL(base)
-  if (storeSlug) url.searchParams.set('store', storeSlug)
-  if (appId) url.searchParams.set('id', normalizeLvId(appId))
-  url.searchParams.set('apiBase', new URL(request.url).origin)
-  url.searchParams.set('heartbeat', String(DEFAULT_HEARTBEAT_MS))
-  url.searchParams.set('commandPoll', String(DEFAULT_COMMAND_POLL_MS))
-  url.searchParams.set('noticePollMs', String(DEFAULT_NOTICE_POLL_MS))
-  if (!url.searchParams.has('cacheMax')) url.searchParams.set('cacheMax', '20')
+  applyPlayerUrlDefaults(request, env, url, storeSlug, appId)
   return url.toString()
 }
 

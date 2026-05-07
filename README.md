@@ -1,3 +1,11 @@
+# LocalVision CMS v1.7.1 LV-ID Integrated CMS
+
+- CMS 메인 화면 안에서 업체별 `lv001` APP ID 등록/확인/수정 가능
+- `/api/app-config?id=lv001`로 APP이 최신 Player URL을 받아갈 수 있음
+- `/boot.html?id=lv001` 임시 부팅 URL 지원
+- Player URL 변경은 CMS에서 처리
+- 운영값: heartbeat=300000, commandPoll=300000, noticePollMs=60000, 기본 재생시간 20초
+
 # LocalVision CMS v1.6.9 LV-ID App Config
 
 ## 핵심 구조

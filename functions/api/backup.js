@@ -43,8 +43,13 @@ export async function onRequestGet({ request, env }) {
 
   const stores = await safeAll(env, `
     SELECT
-      id, name, slug, category, address, contact, status, plan,
-      created_at AS createdAt
+      id,
+      app_id AS appId,
+      name, slug, category, address, contact, status, plan,
+      player_url AS playerUrl,
+      player_url_updated_at AS playerUrlUpdatedAt,
+      created_at AS createdAt,
+      updated_at AS updatedAt
     FROM stores
     ORDER BY created_at DESC
   `)
@@ -98,7 +103,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.4-store-canonical-capture-fixed',
+    version: 'v1.7.1-lv-id-react-integrated-cms',
     mode: env.MEDIA ? 'D1 + R2 auto sync' : 'D1 only - MEDIA binding missing',
     bindings: {
       DB: Boolean(env.DB),

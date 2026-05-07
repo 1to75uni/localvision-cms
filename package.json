@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-6-9-lv-id-app-config",
-  "version": "1.6.9-lv-id-app-config",
+  "name": "localvision-cms-v1-7-1-lv-id-react-integrated-cms",
+  "version": "1.7.1-lv-id-react-integrated-cms",
   "private": true,
-  "description": "LocalVision CMS v1.6.9 with lv001 app-config, default 20s duration, 10min online TTL, and D1 heartbeat throttling.",
+  "description": "LocalVision CMS v1.7.1 with integrated lv001 APP ID management inside the main CMS UI, app-config, default 20s duration, 10min online TTL, and D1 heartbeat throttling.",
   "scripts": {
     "build": "node build-static.js"
   },

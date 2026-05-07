@@ -2,11 +2,21 @@ const fs = require('fs');
 const path = require('path');
 
 const dist = path.join(__dirname, 'dist');
-const index = path.join(dist, 'index.html');
-if (!fs.existsSync(index)) {
-  fs.mkdirSync(dist, { recursive: true });
-  if (fs.existsSync(path.join(__dirname, 'index.html'))) {
-    fs.copyFileSync(path.join(__dirname, 'index.html'), index);
+fs.mkdirSync(dist, { recursive: true });
+
+for (const file of ['index.html', 'boot.html', 'lv-id-url-manager.html']) {
+  const from = path.join(__dirname, file);
+  const to = path.join(dist, file);
+  if (fs.existsSync(from)) fs.copyFileSync(from, to);
+}
+
+const assetsFrom = path.join(__dirname, 'assets');
+const assetsTo = path.join(dist, 'assets');
+if (fs.existsSync(assetsFrom)) {
+  fs.mkdirSync(assetsTo, { recursive: true });
+  for (const file of fs.readdirSync(assetsFrom)) {
+    fs.copyFileSync(path.join(assetsFrom, file), path.join(assetsTo, file));
   }
 }
-console.log('LocalVision CMS v1.6.4 static build: using prebuilt dist/ folder.');
+
+console.log('LocalVision CMS v1.7.1 static build: React bundle includes APP ID management; dist refreshed.');

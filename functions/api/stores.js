@@ -58,7 +58,7 @@ export async function onRequestGet({ request, env }) {
     effectivePlayerUrl: buildPlayerUrl(request, env, store.slug, store.playerUrl, store.appId),
   }))
 
-  return json({ ok: true, version: 'v1.6.9-lv-id-app-config', stores })
+  return json({ ok: true, version: 'v1.7.1-lv-id-react-integrated-cms', stores })
 }
 
 export async function onRequestPost({ request, env }) {
