@@ -1,0 +1,25 @@
+LocalVision CMS v1.6.9 LV-ID App Config 반영사항
+
+1. 업체 ID는 lv001, lv002, lv003 방식으로 관리합니다.
+2. CMS stores 테이블에 app_id, player_url, player_url_updated_at 컬럼을 추가했습니다.
+3. /api/app-config?id=lv001 엔드포인트를 추가했습니다.
+   - APP은 lv001 같은 ID만 저장합니다.
+   - CMS는 ID별 최신 Player URL을 반환합니다.
+   - player_url이 비어 있으면 PLAYER_BASE 기준 표준 URL을 자동 생성합니다.
+4. /lv-id-url-manager.html 관리 화면을 추가했습니다.
+   - 업체 ID / 업체명 / store 코드 / Player URL 관리
+   - Player URL 복사 / Boot URL 복사 가능
+5. /boot.html?id=lv001 부팅 페이지를 추가했습니다.
+   - CMS에서 app-config를 조회해 최신 Player URL로 이동합니다.
+   - CMS 연결 실패 시 마지막 정상 URL로 이동합니다.
+6. heartbeat=300000, commandPoll=300000, noticePollMs=60000 기준을 유지합니다.
+7. ONLINE 기준은 ONLINE_TTL_SEC=600, 즉 마지막 heartbeat 10분 이내입니다.
+8. 콘텐츠 기본 재생시간은 20초로 변경했습니다.
+9. /api/devices heartbeat PATCH는 D1 기록을 10분마다 또는 상태 변경 시만 하도록 throttle을 추가했습니다.
+10. R2/D1 삭제 없이 기존 데이터에 app_id를 자동 보강합니다.
+
+권장 Cloudflare 환경변수:
+- PLAYER_BASE=https://localvision-player.pages.dev
+- ONLINE_TTL_SEC=600
+- D1_HEARTBEAT_WRITE_SEC=600
+- R2_PUBLIC_BASE=본인 R2 public base

@@ -1,0 +1,24 @@
+LocalVision CMS v1.7.2 - Auto APP ID on Store Create
+
+변경 사항
+1. 별도 'APP ID 관리' 사이드 메뉴 제거
+   - 해당 화면 진입 시 브라우저가 멈추는 문제를 회피합니다.
+   - APP ID 관리는 업체 관리 흐름 안으로 통합합니다.
+
+2. 업체 등록 시 APP ID 자동 발급
+   - 신규 업체 등록 시 lv001, lv002, lv003 순서로 APP ID가 자동 생성됩니다.
+   - 프론트에서 appId가 전달되어도 서버가 중복 여부를 확인합니다.
+   - 이미 사용 중인 APP ID가 들어오면 서버가 다음 사용 가능한 APP ID를 발급합니다.
+
+3. 기존 운영 기준 유지
+   - heartbeat=300000
+   - commandPoll=300000
+   - noticePollMs=60000
+   - refresh/contentCheck=480000
+   - 기본 재생시간 20초
+   - ONLINE 기준 10분
+
+운영 방식
+- 업체 관리에서 업체를 추가합니다.
+- 별도로 APP ID 메뉴에 들어가지 않아도 됩니다.
+- APP은 lv001 같은 ID만 저장하고 /api/app-config?id=lv001에서 최신 Player URL을 받아옵니다.
