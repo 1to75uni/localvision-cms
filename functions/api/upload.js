@@ -1,4 +1,4 @@
-import { ensureCoreSchema } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, DEFAULT_CONTENT_DURATION } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -65,7 +65,7 @@ export async function onRequestPost({ request, env }) {
   const title = String(form.get('title') || '').trim()
   const side = String(form.get('side') || 'left')
   const rawStore = String(form.get('store') || '').trim()
-  const duration = Number(form.get('duration') || 10)
+  const duration = Number(form.get('duration') || DEFAULT_CONTENT_DURATION)
 
   if (!file || typeof file === 'string') {
     return json({ ok: false, error: 'file is required' }, 400)
@@ -110,7 +110,7 @@ export async function onRequestPost({ request, env }) {
     side,
     type,
     title,
-    duration: duration || 10,
+    duration: duration || DEFAULT_CONTENT_DURATION,
     status: '사용중',
     fileName,
     url: makePublicUrl(request, env, key),

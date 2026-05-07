@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -79,7 +79,7 @@ export async function onRequestPost({ request, env }) {
     side: body.side,
     type: body.type,
     title: body.title,
-    duration: Number(body.duration) || 10,
+    duration: Number(body.duration) || DEFAULT_CONTENT_DURATION,
     status: body.status || '사용중',
     fileName: body.fileName || '',
     url: body.url || '',

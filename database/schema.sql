@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS stores (
   status TEXT DEFAULT '준비중',
   plan TEXT DEFAULT 'Local Basic',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  app_id TEXT DEFAULT '',
+  player_url TEXT DEFAULT '',
+  player_url_updated_at TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS contents (
@@ -19,7 +22,7 @@ CREATE TABLE IF NOT EXISTS contents (
   side TEXT NOT NULL CHECK (side IN ('left', 'right')),
   type TEXT NOT NULL CHECK (type IN ('image', 'video')),
   title TEXT NOT NULL,
-  duration INTEGER DEFAULT 10,
+  duration INTEGER DEFAULT 20,
   status TEXT DEFAULT '사용중',
   file_name TEXT DEFAULT '',
   url TEXT DEFAULT '',
@@ -59,9 +62,9 @@ VALUES
 INSERT OR IGNORE INTO contents (id, store, side, type, title, duration, status, file_name, sort_order, updated_at)
 VALUES
 ('ct_001', 'goobne', 'left', 'video', '대표메뉴 치킨 영상', 20, '사용중', 'left_1.mp4', 1, '2026-05-02'),
-('ct_002', 'goobne', 'left', 'image', '점심세트 메뉴판', 10, '사용중', 'left_2.jpg', 2, '2026-05-02'),
-('ct_003', '_common', 'right', 'image', '의정부 지역소식 카드', 12, '사용중', 'right_1.jpg', 1, '2026-05-01'),
-('ct_004', '_common', 'right', 'video', 'LocalVision 공통 홍보', 15, '사용중', 'right_2.mp4', 2, '2026-05-01');
+('ct_002', 'goobne', 'left', 'image', '점심세트 메뉴판', 20, '사용중', 'left_2.jpg', 2, '2026-05-02'),
+('ct_003', '_common', 'right', 'image', '의정부 지역소식 카드', 20, '사용중', 'right_1.jpg', 1, '2026-05-01'),
+('ct_004', '_common', 'right', 'video', 'LocalVision 공통 홍보', 20, '사용중', 'right_2.mp4', 2, '2026-05-01');
 
 INSERT OR IGNORE INTO devices (id, store, name, role, online, last_seen, app, device_code, created_at)
 VALUES

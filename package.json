@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-6-4-static-upload",
-  "version": "1.6.4-static-upload",
+  "name": "localvision-cms-v1-6-9-lv-id-app-config",
+  "version": "1.6.9-lv-id-app-config",
   "private": true,
-  "description": "LocalVision CMS v1.6.4 prebuilt static deployment. No Vite install required.",
+  "description": "LocalVision CMS v1.6.9 with lv001 app-config, default 20s duration, 10min online TTL, and D1 heartbeat throttling.",
   "scripts": {
     "build": "node build-static.js"
   },

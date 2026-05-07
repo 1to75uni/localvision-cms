@@ -1,2 +1,18 @@
-이 파일은 package-lock.json, node_modules, src, vite.config.js 없이 만든 GitHub 직접 업로드용입니다.
-Cloudflare가 npm install을 하더라도 설치할 외부 패키지가 없어서 빠르게 지나갑니다.
+LocalVision CMS v1.6.9 업로드 안내
+
+1. 이 ZIP의 전체 파일을 GitHub localvision-cms 저장소 루트에 그대로 업로드합니다.
+2. Cloudflare Pages 배포가 끝나면 아래 주소를 확인합니다.
+   - /api/health
+   - /lv-id-url-manager.html
+   - /api/app-config?id=lv001
+3. Cloudflare 환경변수 권장값
+   - PLAYER_BASE=https://localvision-player.pages.dev
+   - ONLINE_TTL_SEC=600
+   - D1_HEARTBEAT_WRITE_SEC=600
+   - R2_PUBLIC_BASE=R2 공개 URL
+4. APP 수정 전 임시 부팅 URL
+   - https://localvision-cms.pages.dev/boot.html?id=lv001
+5. APP 수정 후 정식 구조
+   - APP은 lv001 같은 ID만 저장
+   - APP은 /api/app-config?id=lv001을 호출
+   - 응답 playerUrl로 WebView.loadUrl 실행

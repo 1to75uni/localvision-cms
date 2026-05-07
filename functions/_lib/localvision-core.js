@@ -44,6 +44,118 @@ export function isMediaKey(key = '') {
 }
 
 
+export const LV_CORE_VERSION = 'v1.6.9-lv-id-app-config'
+export const DEFAULT_CONTENT_DURATION = 20
+export const DEFAULT_HEARTBEAT_MS = 300000
+export const DEFAULT_COMMAND_POLL_MS = 300000
+export const DEFAULT_NOTICE_POLL_MS = 60000
+export const DEFAULT_CONTENT_CHECK_MS = 480000
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+
+export function normalizeLvId(value = '') {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return ''
+  if (/^lv\d{3,}$/.test(raw)) return raw
+  if (/^\d+$/.test(raw)) return `lv${raw.padStart(3, '0')}`
+  return raw.replace(/[^a-z0-9_-]/g, '')
+}
+
+export function nextLvIdFromRows(rows = []) {
+  let max = 0
+  const used = new Set()
+  for (const row of rows || []) {
+    const appId = normalizeLvId(row.app_id ?? row.appId ?? '')
+    if (!appId) continue
+    used.add(appId)
+    const match = appId.match(/^lv(\d+)$/)
+    if (match) max = Math.max(max, Number(match[1]))
+  }
+  let next = max + 1
+  let candidate = `lv${String(next).padStart(3, '0')}`
+  while (used.has(candidate)) {
+    next += 1
+    candidate = `lv${String(next).padStart(3, '0')}`
+  }
+  return candidate
+}
+
+export async function assignMissingAppIds(env) {
+  if (!env.DB) return { ok: false, assigned: 0 }
+  const { results } = await env.DB.prepare(`
+    SELECT id, slug, app_id
+    FROM stores
+    ORDER BY created_at ASC, slug ASC
+  `).all()
+
+  const rows = results || []
+  const assignedRows = rows.filter((row) => normalizeLvId(row.app_id))
+  let assigned = 0
+  for (const row of rows) {
+    if (normalizeLvId(row.app_id)) continue
+    const appId = nextLvIdFromRows(assignedRows)
+    assignedRows.push({ app_id: appId })
+    await env.DB.prepare(`
+      UPDATE stores
+      SET app_id = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(appId, row.id).run()
+    assigned += 1
+  }
+  return { ok: true, assigned }
+}
+
+export async function findStoreForAppConfig(env, idOrStore = '') {
+  if (!env.DB) return null
+  const id = normalizeLvId(idOrStore)
+  const raw = String(idOrStore || '').trim()
+  if (!raw) return null
+  return await env.DB.prepare(`
+    SELECT
+      id,
+      app_id AS appId,
+      name,
+      slug,
+      category,
+      address,
+      contact,
+      status,
+      plan,
+      player_url AS playerUrl,
+      player_url_updated_at AS playerUrlUpdatedAt,
+      created_at AS createdAt,
+      updated_at AS updatedAt
+    FROM stores
+    WHERE lower(app_id) = lower(?)
+       OR slug = ?
+       OR id = ?
+    LIMIT 1
+  `).bind(id || raw, cleanSlug(raw) || raw, raw).first()
+}
+
+export function playerBaseUrl(request, env) {
+  const explicit = String(env.PLAYER_BASE || env.PLAYER_BASE_URL || '').trim().replace(/\/$/, '')
+  if (explicit) return explicit
+  const url = new URL(request.url)
+  if (url.hostname.includes('cms')) return `${url.protocol}//${url.hostname.replace('cms', 'player')}`
+  return 'https://localvision-player.pages.dev'
+}
+
+export function buildPlayerUrl(request, env, storeSlug, overrideUrl = '', appId = '') {
+  const override = String(overrideUrl || '').trim()
+  if (override) return override
+  const base = playerBaseUrl(request, env)
+  const url = new URL(base)
+  if (storeSlug) url.searchParams.set('store', storeSlug)
+  if (appId) url.searchParams.set('id', normalizeLvId(appId))
+  url.searchParams.set('apiBase', new URL(request.url).origin)
+  url.searchParams.set('heartbeat', String(DEFAULT_HEARTBEAT_MS))
+  url.searchParams.set('commandPoll', String(DEFAULT_COMMAND_POLL_MS))
+  url.searchParams.set('noticePollMs', String(DEFAULT_NOTICE_POLL_MS))
+  if (!url.searchParams.has('cacheMax')) url.searchParams.set('cacheMax', '20')
+  return url.toString()
+}
+
+
 function canonicalUrl(value = '') {
   const raw = String(value || '').trim()
   if (!raw) return ''
@@ -202,7 +314,10 @@ export async function ensureCoreSchema(env) {
       status TEXT DEFAULT '준비중',
       plan TEXT DEFAULT 'Local Basic',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      app_id TEXT DEFAULT '',
+      player_url TEXT DEFAULT '',
+      player_url_updated_at TEXT DEFAULT ''
     )
   `).run()
 
@@ -213,7 +328,7 @@ export async function ensureCoreSchema(env) {
       side TEXT NOT NULL,
       type TEXT NOT NULL,
       title TEXT NOT NULL,
-      duration INTEGER DEFAULT 10,
+      duration INTEGER DEFAULT 20,
       status TEXT DEFAULT '사용중',
       file_name TEXT DEFAULT '',
       url TEXT DEFAULT '',
@@ -295,8 +410,11 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'stores', 'plan', `TEXT DEFAULT 'Local Basic'`)
   await addColumnIfMissing(env, 'stores', 'created_at', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'updated_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'app_id', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'player_url', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'player_url_updated_at', `TEXT DEFAULT ''`)
 
-  await addColumnIfMissing(env, 'contents', 'duration', `INTEGER DEFAULT 10`)
+  await addColumnIfMissing(env, 'contents', 'duration', `INTEGER DEFAULT 20`)
   await addColumnIfMissing(env, 'contents', 'status', `TEXT DEFAULT '사용중'`)
   await addColumnIfMissing(env, 'contents', 'file_name', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'contents', 'url', `TEXT DEFAULT ''`)
@@ -322,7 +440,7 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'notices', 'display_mode', `TEXT DEFAULT 'fullscreen'`)
   await addColumnIfMissing(env, 'notices', 'priority', `TEXT DEFAULT 'normal'`)
   await addColumnIfMissing(env, 'notices', 'duration_sec', `INTEGER DEFAULT 15`)
-  await addColumnIfMissing(env, 'notices', 'repeat_mode', `TEXT DEFAULT 'always'`)
+  await addColumnIfMissing(env, 'notices', 'repeat_mode', `TEXT DEFAULT 'once'`)
   await addColumnIfMissing(env, 'notices', 'is_active', `INTEGER DEFAULT 1`)
   await addColumnIfMissing(env, 'notices', 'created_at', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'notices', 'updated_at', `TEXT DEFAULT ''`)
@@ -342,6 +460,7 @@ export async function ensureCoreSchema(env) {
   await tryRun(env, `UPDATE stores SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE stores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE contents SET duration = 20 WHERE duration IS NULL OR duration = '' OR duration <= 0`)
   await tryRun(env, `UPDATE devices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE devices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE notices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
@@ -349,8 +468,10 @@ export async function ensureCoreSchema(env) {
 
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_store_side ON contents(store, side)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_devices_store ON devices(store)`)
+  await tryRun(env, `CREATE UNIQUE INDEX IF NOT EXISTS idx_stores_app_id_unique ON stores(app_id) WHERE app_id IS NOT NULL AND app_id <> ''`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_device_screenshots_store_created ON device_screenshots(store, created_at)`)
+  await assignMissingAppIds(env)
 }
 
 export async function listR2Objects(env, prefix = '', limit = 1000) {
@@ -420,7 +541,7 @@ export async function scanR2Media(request, env) {
       side,
       type,
       title: fileName.replace(/\.[^.]+$/, ''),
-      duration: type === 'video' ? 0 : 10,
+      duration: DEFAULT_CONTENT_DURATION,
       status: '사용중',
       fileName,
       url: makePublicUrl(request, env, key),

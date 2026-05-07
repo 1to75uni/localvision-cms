@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, parseLastSeenMs, onlineTtlSec, DEFAULT_D1_HEARTBEAT_WRITE_SEC, LV_CORE_VERSION } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -57,6 +57,22 @@ async function findDevice(env, { id, store }) {
   return null
 }
 
+function d1HeartbeatWriteSec(env) {
+  const value = Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_D1_HEARTBEAT_WRITE_SEC
+}
+
+function isHeartbeatOnlyPatch(body, incoming) {
+  return body?.online === true
+    && Boolean(incoming.store)
+    && !Object.prototype.hasOwnProperty.call(body, 'lastCommand')
+    && !Object.prototype.hasOwnProperty.call(body, 'commandAt')
+    && !Object.prototype.hasOwnProperty.call(body, 'command')
+    && !Object.prototype.hasOwnProperty.call(body, 'force')
+    && !String(body.name || '').trim()
+    && !String(body.deviceCode || body.device_code || '').trim()
+}
+
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   await ensureCoreSchema(env)
@@ -76,7 +92,7 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: 'v1.6.8-heartbeat-notice', devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
+  return json({ ok: true, version: LV_CORE_VERSION, devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -178,6 +194,38 @@ export async function onRequestPatch({ request, env }) {
   const deviceCode = incoming.deviceCode || current.device_code || ''
   const name = incoming.name || current.name || `${current.store} TV`
   const role = incoming.role || current.role || 'tv'
+
+  const heartbeatOnly = isHeartbeatOnlyPatch(body, incoming)
+  if (heartbeatOnly) {
+    const nowMs = Date.now()
+    const previousMs = parseLastSeenMs(current.last_seen, nowMs)
+    const wasOnline = previousMs > 0 && nowMs - previousMs <= onlineTtlSec(env) * 1000
+    const writeIntervalMs = d1HeartbeatWriteSec(env) * 1000
+    const shouldSkipD1 = wasOnline && previousMs > 0 && nowMs - previousMs < writeIntervalMs
+
+    if (shouldSkipD1) {
+      return json({
+        ok: true,
+        mode: 'heartbeat-throttled',
+        d1Written: false,
+        rule: 'D1 heartbeat write is limited to every 10 minutes or online/offline state changes.',
+        nextD1WriteAfterSec: Math.max(0, Math.ceil((writeIntervalMs - (nowMs - previousMs)) / 1000)),
+        device: mapDevice({
+          id: current.id,
+          store: current.store,
+          name,
+          role,
+          online,
+          lastSeen,
+          app,
+          deviceCode,
+          lastCommand,
+          commandAt,
+          updatedAt: current.updated_at,
+        }, env),
+      })
+    }
+  }
 
   if (incoming.store) {
     // MVP는 URL 1개 = TV 1대 = store 기준입니다.

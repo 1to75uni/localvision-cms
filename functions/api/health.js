@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, listR2Objects } from '../_lib/localvision-core.js'
+import { json, LV_CORE_VERSION, ensureCoreSchema, listR2Objects, DEFAULT_HEARTBEAT_MS, DEFAULT_COMMAND_POLL_MS, DEFAULT_NOTICE_POLL_MS } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -38,11 +38,14 @@ export async function onRequestGet({ env }) {
 
   return json({
     ok: dbOk,
-    version: 'v1.6.8-heartbeat-notice',
+    version: LV_CORE_VERSION,
     DB: dbOk,
     MEDIA: mediaOk,
     R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
     ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
+    heartbeatMs: DEFAULT_HEARTBEAT_MS,
+    commandPollMs: DEFAULT_COMMAND_POLL_MS,
+    noticePollMs: DEFAULT_NOTICE_POLL_MS,
     r2SampleCount,
     checks,
   }, dbOk ? 200 : 500)

@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, scanR2Media, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents } from '../_lib/localvision-core.js'
+import { json, DEFAULT_CONTENT_DURATION, LV_CORE_VERSION, ensureCoreSchema, scanR2Media, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -11,7 +11,7 @@ function normalizeItem(row) {
     side: row.side,
     type: row.type,
     title: row.title,
-    duration: Number(row.duration || 10),
+    duration: Number(row.duration || DEFAULT_CONTENT_DURATION),
     status: row.status,
     fileName: row.fileName,
     url: row.url || '',
@@ -80,7 +80,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.6.4-store-canonical-capture-fixed',
+    version: LV_CORE_VERSION,
     source,
     store,
     side,
