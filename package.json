@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-0-stable-architecture",
-  "version": "1.8.0-stable-architecture",
+  "name": "localvision-cms-v1-8-1-api-diet",
+  "version": "1.8.1-api-diet",
   "private": true,
-  "description": "LocalVision CMS v1.8.0: playlist snapshot + offline-first architecture, lighter D1/R2 usage, CORS-safe APIs.",
+  "description": "LocalVision CMS v1.8.1: API diet, lightweight heartbeat, reduced D1 calls, offline-first playlist snapshots.",
   "scripts": {
     "build": "node build-static.js"
   },

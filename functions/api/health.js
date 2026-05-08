@@ -4,7 +4,9 @@ export async function onRequestOptions() {
   return json({ ok: true })
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
+  const url = new URL(request.url)
+  const deep = ['1', 'true', 'yes'].includes(String(url.searchParams.get('deep') || '').toLowerCase())
   const checks = []
   let dbOk = Boolean(env.DB)
   let mediaOk = Boolean(env.MEDIA)
@@ -12,7 +14,9 @@ export async function onRequestGet({ env }) {
 
   if (env.DB) {
     try {
-      await ensureCoreSchema(env)
+      // v1.8.1: 기본 health는 가벼운 SELECT 1만 실행합니다.
+      // 스키마 보정/마이그레이션은 /api/health?deep=1 또는 /api/repair에서만 실행합니다.
+      if (deep) await ensureCoreSchema(env)
       const probe = await env.DB.prepare('SELECT 1 AS ok').first()
       dbOk = Boolean(probe?.ok)
     } catch (error) {
@@ -25,8 +29,10 @@ export async function onRequestGet({ env }) {
 
   if (env.MEDIA) {
     try {
-      const objects = await listR2Objects(env, 'stores/', 20)
-      r2SampleCount = objects.length
+      if (deep) {
+        const objects = await listR2Objects(env, 'stores/', 20)
+        r2SampleCount = objects.length
+      }
       mediaOk = true
     } catch (error) {
       mediaOk = false
@@ -39,6 +45,7 @@ export async function onRequestGet({ env }) {
   return json({
     ok: dbOk,
     version: LV_CORE_VERSION,
+    mode: deep ? 'deep' : 'lite',
     DB: dbOk,
     MEDIA: mediaOk,
     R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
@@ -48,7 +55,7 @@ export async function onRequestGet({ env }) {
     noticePollMs: DEFAULT_NOTICE_POLL_MS,
     serverNowUtc: nowUtcIso(),
     serverNowKst: nowKstString(),
-    heartbeatWritePolicy: 'player-state-d1-write-every-10-min-or-status-change',
+    heartbeatWritePolicy: 'heartbeat-d1-write-every-10-min-or-status-change',
     r2SampleCount,
     checks,
   }, dbOk ? 200 : 500)

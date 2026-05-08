@@ -39,7 +39,7 @@ function safeStoreDeviceId(store = '') {
 }
 
 function makePlayerAppLabel(body = {}) {
-  const version = String(body.playerVersion || 'v1.7.0-offline-first').trim()
+  const version = String(body.playerVersion || 'v1.7.1-api-diet').trim()
   const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
   const play = body.playStatus ? ` · ${body.playStatus}` : ''
   return `Player ${version}${appShell}${play}`.slice(0, 240)
@@ -113,8 +113,7 @@ function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null)
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
-
+  // v1.8.1: heartbeat 경로에서는 매번 schema repair를 돌리지 않습니다.
   const body = await readBody(request)
   const store = cleanSlug(body.store || '')
   const appId = normalizeLvId(body.appId || body.id || '')
@@ -202,7 +201,7 @@ export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, errorCode: 'LV-DB-MISSING', error: 'D1 binding DB is missing' }, 500)
 
   const diagnostics = []
-  try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
+  // v1.8.1: player-state GET은 재생목록 확인용입니다. schema repair는 /api/repair 또는 /api/health?deep=1에서만 실행합니다.
 
   let store = null
   if (appId) store = await findStoreForAppConfig(env, appId)

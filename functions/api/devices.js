@@ -71,9 +71,8 @@ function isHeartbeatOnlyPatch(body, incoming) {
 
 export async function onRequestGet({ env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
-
-  await cleanupDuplicateDevices(env)
+  // v1.8.1: CMS 상태 조회는 schema repair/중복 정리를 매번 실행하지 않습니다.
+  // 필요 시 /api/repair를 수동 실행합니다.
 
   const { results } = await env.DB.prepare(`
     SELECT

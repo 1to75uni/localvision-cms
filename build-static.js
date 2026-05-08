@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.8.0 STABLE ARCHITECTURE static build: snapshot + offline-first API; dist refreshed.');
+console.log('LocalVision CMS v1.8.1 API DIET static build: snapshot + offline-first API; dist refreshed.');

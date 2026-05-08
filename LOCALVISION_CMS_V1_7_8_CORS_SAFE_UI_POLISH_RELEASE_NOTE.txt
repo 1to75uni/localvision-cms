@@ -1,7 +1,7 @@
-LocalVision CMS v1.7.8 CORS SAFE + UI POLISH
+LocalVision CMS v1.8.1 CORS SAFE + UI POLISH
 
 - 모든 /api/* 응답과 OPTIONS preflight에 CORS 헤더를 강제 적용합니다.
 - Access-Control-Allow-Headers에 cache-control, pragma, authorization, x-lv-admin-token을 포함했습니다.
 - Functions middleware에서 예외가 발생해도 JSON + CORS로 응답합니다.
-- CMS UI/문구 버전을 APP v9.2 · Player v1.6.10 · CMS v1.7.8로 통일했습니다.
-- Player v1.6.10의 CORS-safe fetch와 함께 사용합니다.
+- CMS UI/문구 버전을 APP v9.2 · Player v1.7.1 · CMS v1.8.1로 통일했습니다.
+- Player v1.7.1의 CORS-safe fetch와 함께 사용합니다.

@@ -155,15 +155,15 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.0-stable-architecture-offline-first'
+export const LV_CORE_VERSION = 'v1.8.1-api-diet-heartbeat-lite'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
 export const DEFAULT_NOTICE_POLL_MS = 60000
-export const DEFAULT_CONTENT_CHECK_MS = 900000
+export const DEFAULT_CONTENT_CHECK_MS = 480000
 export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
-export const DEFAULT_PLAYER_STATE_POLL_MS = 900000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 480000
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -779,7 +779,7 @@ export async function upsertR2ScanIntoD1(request, env) {
 
 
 
-// ===== LocalVision v1.8.0 Snapshot + Offline-first helpers =====
+// ===== LocalVision v1.8.1 API Diet + Heartbeat Lite helpers =====
 // TV 재생 시점마다 R2 list/scan을 하지 않고, CMS에서 미리 만들어 둔 playlist snapshot JSON을 읽게 하기 위한 공통 함수입니다.
 export function playlistSnapshotKey(store = '', side = 'bundle') {
   const cleanStore = cleanSlug(store || '')

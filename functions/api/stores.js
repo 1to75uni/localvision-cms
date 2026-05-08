@@ -51,8 +51,7 @@ async function isAppIdAvailable(env, appId) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
-
+  // v1.8.1: 목록 조회는 schema repair 없이 가볍게 실행합니다.
   const { results } = await env.DB.prepare(`
     SELECT
       id,

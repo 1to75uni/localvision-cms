@@ -1,0 +1,33 @@
+LocalVision CMS v1.8.1 API DIET + HEARTBEAT LITE
+
+목표:
+- CMS 첫 화면 503 완화
+- Player 재생 중인데 CMS 오프라인 표시되는 문제 완화
+- D1 과호출 감소
+
+핵심 변경:
+1. CMS 첫 연결 즉시 호출을 /api/ping 1개로 축소
+   - 기존: /api/ping + /api/health + /api/stores 3개 호출
+   - 변경: /api/ping만 호출
+
+2. /api/health 기본 모드 경량화
+   - 기본 /api/health는 SELECT 1만 수행
+   - 스키마 점검/보정은 /api/health?deep=1 또는 /api/repair에서만 수행
+
+3. Player용 경량 API 추가
+   - /api/heartbeat: 온라인 상태 전용, D1 write는 10분마다 또는 상태 변경 시만
+   - /api/notice-active: 공지 확인 전용
+   - /api/player-command: 새로고침/스크린샷 등 명령 확인 전용
+   - /api/playlist-version: R2 snapshot 버전 확인 전용
+
+4. 일반 조회 API 다이어트
+   - /api/stores GET, /api/contents GET, /api/devices GET에서 매번 ensureCoreSchema/cleanup 실행 제거
+   - 운영 중 무거운 repair 작업은 /api/repair로 분리
+
+배포 후 권장 확인:
+- /api/ping
+- /api/health
+- /api/health?deep=1
+- /api/heartbeat POST
+- /api/notice-active?store=업체코드
+- /api/player-command?store=업체코드
