@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.7.4 static build: React bundle includes APP ID management; dist refreshed.');
+console.log('LocalVision CMS v1.7.6 API-STABLE static build: Player-centric CMS with ping/retry guard; dist refreshed.');

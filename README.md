@@ -4,7 +4,7 @@
 - `/api/app-config?id=lv001`로 APP이 최신 Player URL을 받아갈 수 있음
 - `/boot.html?id=lv001` 임시 부팅 URL 지원
 - Player URL 변경은 CMS에서 처리
-- 운영값: heartbeat=300000, commandPoll=300000, noticePollMs=300000, 기본 재생시간 20초
+- 운영값: heartbeat=300000, commandPoll=300000, noticePollMs=60000, 기본 재생시간 20초
 
 # LocalVision CMS v1.7.4 LV-ID App Config
 
@@ -23,7 +23,7 @@ Player = CMS가 내려준 URL로 실행되는 실제 재생기
 - CMS stores 테이블에 `app_id`, `player_url`, `player_url_updated_at` 컬럼을 추가했습니다.
 - `/lv-id-url-manager.html` 관리 화면을 추가했습니다.
 - `/boot.html?id=lv001` 부팅/런처 페이지를 추가했습니다.
-- 기본 운영값은 `heartbeat=300000`, `commandPoll=300000`, `noticePollMs=300000`입니다.
+- 기본 운영값은 `heartbeat=300000`, `commandPoll=300000`, `noticePollMs=60000`입니다.
 - ONLINE 기준은 마지막 heartbeat 10분 이내입니다. `ONLINE_TTL_SEC=600` 권장.
 - 콘텐츠 기본 재생시간은 20초입니다.
 - heartbeat PATCH의 D1 기록을 10분마다 또는 상태 변경 시만 수행하도록 throttle을 추가했습니다.

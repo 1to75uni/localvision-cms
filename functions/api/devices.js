@@ -106,7 +106,7 @@ export async function onRequestPost({ request, env }) {
     role: incoming.role || 'tv',
     online: incoming.online ?? 0,
     lastSeen: incoming.lastSeen || '아직 접속 없음',
-    app: incoming.app || 'Android TV App v8.2',
+    app: incoming.app || 'APP v9.2 Minimal Shell',
     deviceCode: incoming.deviceCode || '',
     lastCommand: incoming.lastCommand || '',
     commandAt: incoming.commandAt || '',
@@ -154,7 +154,7 @@ export async function onRequestPatch({ request, env }) {
       role: incoming.role || 'tv',
       online: incoming.online ?? 1,
       lastSeen: incoming.lastSeen ?? nowUtcIso(),
-      app: incoming.app || 'Android TV App v8.2',
+      app: incoming.app || 'APP v9.2 Minimal Shell',
       deviceCode: incoming.deviceCode || `LV-${incoming.store.toUpperCase()}-01`,
       lastCommand: incoming.lastCommand || '',
       commandAt: incoming.commandAt || '',
@@ -186,7 +186,7 @@ export async function onRequestPatch({ request, env }) {
   const lastSeen = incoming.lastSeen ?? (body.online === true ? nowUtcIso() : current.last_seen)
   const lastCommand = incoming.lastCommand ?? current.last_command
   const commandAt = incoming.commandAt ?? current.command_at
-  const app = incoming.app || current.app || 'Android TV App v8.2'
+  const app = incoming.app || current.app || 'APP v9.2 Minimal Shell'
   const deviceCode = incoming.deviceCode || current.device_code || ''
   const name = incoming.name || current.name || `${current.store} TV`
   const role = incoming.role || current.role || 'tv'

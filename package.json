@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-7-4-stable-player-state",
-  "version": "1.7.4-stable-player-state",
+  "name": "localvision-cms-v1-7-6-api-stable-player-centric",
+  "version": "1.7.6-api-stable-player-centric",
   "private": true,
-  "description": "LocalVision CMS v1.7.4: version labels aligned, /api/player-state added, notice KST fixed, R2 deleteFile supported, D1 heartbeat writes optimized.",
+  "description": "LocalVision CMS v1.7.6: API-STABLE guard, lightweight /api/ping, Player-centric state, D1 write optimization.",
   "scripts": {
     "build": "node build-static.js"
   },

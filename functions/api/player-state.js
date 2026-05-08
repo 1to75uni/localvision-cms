@@ -24,6 +24,9 @@ import {
   DEFAULT_APP_CONFIG_POLL_MS,
   DEFAULT_PLAYER_STATE_POLL_MS,
   DEFAULT_D1_HEARTBEAT_WRITE_SEC,
+  parseLastSeenMs,
+  onlineTtlSec,
+  cleanSlug,
 } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() { return json({ ok: true }) }
@@ -73,6 +76,107 @@ function mapNotice(row) {
     updatedAt: row.updatedAt || '',
     updatedAtKst: row.updatedAt ? toKstString(row.updatedAt) : '',
   }
+}
+
+async function readBody(request) {
+  try { return await request.json() } catch { return {} }
+}
+
+function safeStoreDeviceId(store = '') {
+  const clean = cleanSlug(store) || String(store || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `tv_${clean}`
+}
+
+function makePlayerAppLabel(body = {}) {
+  const version = String(body.playerVersion || 'v1.6.8-url-operation-core').trim()
+  const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
+  const play = body.playStatus ? ` · ${body.playStatus}` : ''
+  return `Player ${version}${appShell}${play}`.slice(0, 240)
+}
+
+export async function onRequestPost({ request, env }) {
+  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
+
+  const body = await readBody(request)
+  const store = cleanSlug(body.store || '')
+  const appId = normalizeLvId(body.appId || body.id || '')
+  if (!store && !appId) return json({ ok: false, error: 'store or id is required' }, 400)
+
+  let resolvedStore = store
+  if (!resolvedStore && appId) {
+    const storeRow = await findStoreForAppConfig(env, appId)
+    resolvedStore = cleanSlug(storeRow?.slug || '')
+  }
+  if (!resolvedStore) return json({ ok: false, error: 'store not found' }, 404)
+
+  const canonicalId = safeStoreDeviceId(resolvedStore)
+  const now = nowUtcIso()
+  const lastSeen = body.lastSeen || now
+  const name = `${resolvedStore} TV`
+  const app = makePlayerAppLabel(body)
+  const role = 'player'
+
+  let current = await env.DB.prepare(`SELECT * FROM devices WHERE id = ? LIMIT 1`).bind(canonicalId).first()
+  if (!current) {
+    current = await env.DB.prepare(`
+      SELECT * FROM devices
+      WHERE store = ?
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 1
+    `).bind(resolvedStore).first()
+  }
+
+  if (!current) {
+    await env.DB.prepare(`
+      INSERT INTO devices
+      (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?, '', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).bind(canonicalId, resolvedStore, name, role, lastSeen, app, `LV-${resolvedStore.toUpperCase()}-01`).run()
+  } else {
+    const nowMs = Date.now()
+    const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
+    const writeSec = Math.max(0, Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC || 600))
+    const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
+    const appChanged = String(current.app || '') !== app
+    const shouldWrite = !lastWrittenMs || !wasFresh || appChanged || writeSec <= 0 || nowMs - lastWrittenMs >= writeSec * 1000
+
+    if (shouldWrite) {
+      await env.DB.prepare(`
+        UPDATE devices
+        SET store = ?, name = ?, role = ?, online = 1, last_seen = ?, app = ?,
+            device_code = COALESCE(NULLIF(device_code, ''), ?), updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? OR store = ?
+      `).bind(resolvedStore, name, role, lastSeen, app, `LV-${resolvedStore.toUpperCase()}-01`, current.id || canonicalId, resolvedStore).run()
+    } else {
+      return json({
+        ok: true,
+        endpoint: '/api/player-state',
+        mode: 'player-heartbeat-accepted-d1-skipped',
+        d1Written: false,
+        d1WritePolicySec: writeSec,
+        updatedAt: now,
+        updatedAtKst: nowKstString(),
+        device: mapDevice({ ...current, store: resolvedStore, last_seen: lastSeen, lastSeen, online: 1, app, role, updatedAt: now }, env),
+      })
+    }
+  }
+
+  await cleanupDuplicateDevices(env)
+  const row = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY updated_at DESC LIMIT 1`).bind(resolvedStore).first()
+  return json({
+    ok: true,
+    endpoint: '/api/player-state',
+    mode: 'player-heartbeat-written',
+    d1Written: true,
+    updatedAt: now,
+    updatedAtKst: nowKstString(),
+    device: mapDevice(row || { id: canonicalId, store: resolvedStore, name, role, online: 1, last_seen: lastSeen, app }, env),
+  })
+}
+
+export async function onRequestPatch(ctx) {
+  return onRequestPost(ctx)
 }
 
 function appConfigResponse(request, env, store) {

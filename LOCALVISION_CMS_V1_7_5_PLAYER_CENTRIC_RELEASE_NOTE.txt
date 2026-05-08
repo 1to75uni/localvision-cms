@@ -1,0 +1,12 @@
+# LocalVision CMS v1.7.6 Player-Centric Stable
+
+## 핵심 변경
+- CMS/Player 중심 구조로 재정리했습니다. APP은 Minimal Shell입니다.
+- `/api/player-state` GET은 playlist/notice/command/config 통합 조회를 담당합니다.
+- `/api/player-state` POST/PATCH는 Player heartbeat/state 보고를 담당합니다.
+- noticePollMs 기본값은 60000ms입니다.
+- D1 heartbeat write는 10분마다 또는 상태 변경 시만 기록하는 방향입니다.
+- CMS 첫 화면 API 순간 실패를 줄이기 위해 API GET retry guard를 추가했습니다.
+
+## 운영 기준
+APP v9.2 / Player v1.6.8 / CMS v1.7.6 조합 기준입니다.

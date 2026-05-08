@@ -48,7 +48,7 @@ export async function onRequestGet({ env }) {
     noticePollMs: DEFAULT_NOTICE_POLL_MS,
     serverNowUtc: nowUtcIso(),
     serverNowKst: nowKstString(),
-    heartbeatWritePolicy: 'every-heartbeat-during-mvp-stabilization',
+    heartbeatWritePolicy: 'player-state-d1-write-every-10-min-or-status-change',
     r2SampleCount,
     checks,
   }, dbOk ? 200 : 500)

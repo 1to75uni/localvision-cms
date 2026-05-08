@@ -1,0 +1,31 @@
+# LocalVision CMS v1.7.6 API-STABLE Player-Centric
+
+## 목적
+CMS 첫 접속 또는 운영 중 Cloudflare Functions/D1/R2/브라우저 캐시 지연 때문에 API가 가끔 안 붙거나 서버 연결 전 상태가 길어지는 현상을 줄이기 위한 안정화 버전입니다.
+
+## 추가/변경
+1. `/api/ping` 추가
+   - D1/R2를 건드리지 않는 초경량 서버 연결 확인 API입니다.
+   - CMS 첫 연결 확인과 장애 구분에 사용합니다.
+
+2. `assets/lv-cms-api-stable-v176.js` 추가
+   - GET `/api/*` 호출에 no-store/cache-bust 적용
+   - 0초 → 1.5초 → 3초 → 10초 → 30초 → 60초 재시도
+   - 실패 후 60초마다 `/api/ping`으로 재연결 감지
+   - API 도메인이 꼬였을 때 현재 CMS 도메인 기준으로 fallback 시도
+   - 화면 하단에 “서버 재연결 중/복구됨” 상태 표시
+
+3. 기존 Player-centric 구조 유지
+   - Player heartbeat가 메인 ONLINE 기준
+   - APP v9.2는 최소 Native Shell 역할 유지
+   - `/api/app-config`, `/api/player-config`, `/api/devices`, `/api/screenshots` 기존 흐름 유지
+
+## 운영 기준
+- heartbeat=300000
+- onlineTTL=600000
+- refresh=480000
+- commandPoll=300000
+- noticePollMs=60000
+- cacheMax=20
+- defaultDuration=20
+- appConfigPollMs=1800000

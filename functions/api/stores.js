@@ -93,7 +93,7 @@ export async function onRequestPost({ request, env }) {
   const slug = cleanSlug(body.slug || body.store || '')
   if (!body.name || !slug) return json({ ok: false, error: 'name and slug are required' }, 400)
 
-  // v1.7.4 운영 기준: 업체를 등록하면 APP ID가 자동 발급됩니다.
+  // v1.7.5 운영 기준: 업체를 등록하면 APP ID가 자동 발급됩니다.
   // 프론트에서 appId가 오더라도 중복/누락을 막기 위해 서버가 최종 검증합니다.
   const requestedAppId = normalizeLvId(body.appId || body.app_id || '')
   const autoAppId = await nextAvailableAppId(env)
