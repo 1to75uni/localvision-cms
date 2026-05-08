@@ -1,4 +1,4 @@
-LocalVision CMS v1.7.1 업로드 안내
+LocalVision CMS v1.7.4 업로드 안내
 
 이 ZIP은 GitHub localvision-cms 저장소를 비우고 그대로 업로드하는 완성본입니다.
 
@@ -9,7 +9,7 @@ LocalVision CMS v1.7.1 업로드 안내
 - 업체 관리 화면 상단 APP ID 빠른 확인 추가
 - /api/app-config?id=lv001 유지
 - /boot.html?id=lv001 유지
-- heartbeat=300000, commandPoll=300000, noticePollMs=60000
+- heartbeat=300000, commandPoll=300000, noticePollMs=300000
 - ONLINE 기준 10분
 - 콘텐츠 기본 재생시간 20초
 

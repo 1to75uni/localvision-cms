@@ -84,6 +84,55 @@ export function makePublicUrl(request, env, key) {
   return `${url.origin}/api/media?key=${encodeURIComponent(key)}`
 }
 
+export function r2KeyFromUrl(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  try {
+    const url = new URL(raw)
+    const mediaKey = url.searchParams.get('key')
+    if (url.pathname.includes('/api/media') && mediaKey) return decodeURIComponent(mediaKey)
+    const path = decodeURIComponent(url.pathname || '').replace(/^\/+/, '')
+    const markers = ['stores/', 'system/']
+    for (const marker of markers) {
+      const idx = path.indexOf(marker)
+      if (idx >= 0) return path.slice(idx)
+    }
+    return ''
+  } catch {
+    const clean = decodeURIComponent(raw).replace(/^https?:\/\/[^/]+\//, '').replace(/^\/+/, '').split('?')[0]
+    if (clean.startsWith('stores/') || clean.startsWith('system/')) return clean
+    return ''
+  }
+}
+
+export function localKstToUtcIso(value = '') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  // 이미 Z 또는 +09:00 같은 타임존 정보가 붙은 ISO 값이면 그대로 UTC 변환합니다.
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const d = new Date(raw)
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString()
+  }
+  const m = raw.match(/^(\d{4})[-.](\d{1,2})[-.](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (!m) {
+    const d = new Date(raw)
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString()
+  }
+  const yyyy = Number(m[1])
+  const mo = Number(m[2]) - 1
+  const dd = Number(m[3])
+  const hh = Number(m[4] || 0)
+  const mi = Number(m[5] || 0)
+  const ss = Number(m[6] || 0)
+  return new Date(Date.UTC(yyyy, mo, dd, hh - 9, mi, ss)).toISOString()
+}
+
+export function normalizeNoticeTime(value = '', timezone = 'Asia/Seoul') {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  return timezone === 'Asia/Seoul' ? localKstToUtcIso(raw) : toUtcIso(raw)
+}
+
 export function detectTypeFromName(name = '') {
   const lower = String(name).toLowerCase()
   if (lower.endsWith('.mp4') || lower.endsWith('.webm') || lower.endsWith('.mov') || lower.endsWith('.m4v')) return 'video'
@@ -98,13 +147,15 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.7.3-kst-heartbeat-final'
+export const LV_CORE_VERSION = 'v1.7.4-stable-player-state'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
-export const DEFAULT_NOTICE_POLL_MS = 60000
+export const DEFAULT_NOTICE_POLL_MS = 300000
 export const DEFAULT_CONTENT_CHECK_MS = 480000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 0
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 300000
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -203,6 +254,8 @@ function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
   if (!url.searchParams.has('refresh')) url.searchParams.set('refresh', String(DEFAULT_CONTENT_CHECK_MS))
   if (!url.searchParams.has('heartbeat')) url.searchParams.set('heartbeat', String(DEFAULT_HEARTBEAT_MS))
   if (!url.searchParams.has('commandPoll')) url.searchParams.set('commandPoll', String(DEFAULT_COMMAND_POLL_MS))
+  if (!url.searchParams.has('statePoll')) url.searchParams.set('statePoll', String(DEFAULT_PLAYER_STATE_POLL_MS))
+  if (!url.searchParams.has('appConfigPoll')) url.searchParams.set('appConfigPoll', String(DEFAULT_APP_CONFIG_POLL_MS))
   if (!url.searchParams.has('noticePollMs')) url.searchParams.set('noticePollMs', String(DEFAULT_NOTICE_POLL_MS))
   if (!url.searchParams.has('cacheMax')) url.searchParams.set('cacheMax', '20')
   if (!url.searchParams.has('bundleMode')) url.searchParams.set('bundleMode', 'cache')
@@ -304,7 +357,7 @@ export async function cleanupDuplicateContents(env) {
   if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0 }
   try {
     const { results } = await env.DB.prepare(`
-      SELECT id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at
+      SELECT id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key
       FROM contents
       ORDER BY store ASC, side ASC, sort_order ASC, updated_at DESC
     `).all()
@@ -408,7 +461,8 @@ export async function ensureCoreSchema(env) {
       file_name TEXT DEFAULT '',
       url TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      r2_key TEXT DEFAULT ''
     )
   `).run()
 
@@ -445,9 +499,12 @@ export async function ensureCoreSchema(env) {
       priority TEXT DEFAULT 'normal',
       duration_sec INTEGER DEFAULT 15,
       repeat_mode TEXT DEFAULT 'once',
+      repeat_interval_min INTEGER DEFAULT 0,
       is_active INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      r2_key TEXT DEFAULT '',
+      timezone TEXT DEFAULT 'Asia/Seoul'
     )
   `).run()
 
@@ -495,6 +552,7 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'contents', 'url', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'contents', 'sort_order', `INTEGER DEFAULT 0`)
   await addColumnIfMissing(env, 'contents', 'updated_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'contents', 'r2_key', `TEXT DEFAULT ''`)
 
   await addColumnIfMissing(env, 'devices', 'role', `TEXT DEFAULT 'tv'`)
   await addColumnIfMissing(env, 'devices', 'online', `INTEGER DEFAULT 0`)
@@ -516,9 +574,12 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'notices', 'priority', `TEXT DEFAULT 'normal'`)
   await addColumnIfMissing(env, 'notices', 'duration_sec', `INTEGER DEFAULT 15`)
   await addColumnIfMissing(env, 'notices', 'repeat_mode', `TEXT DEFAULT 'once'`)
+  await addColumnIfMissing(env, 'notices', 'repeat_interval_min', `INTEGER DEFAULT 0`)
   await addColumnIfMissing(env, 'notices', 'is_active', `INTEGER DEFAULT 1`)
   await addColumnIfMissing(env, 'notices', 'created_at', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'notices', 'updated_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'r2_key', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'notices', 'timezone', `TEXT DEFAULT 'Asia/Seoul'`)
 
   await addColumnIfMissing(env, 'player_errors', 'store', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'player_errors', 'device_id', `TEXT DEFAULT ''`)
@@ -677,9 +738,10 @@ export async function upsertR2ScanIntoD1(request, env) {
         await tryRun(env, `
           UPDATE contents
           SET url = CASE WHEN COALESCE(url, '') = '' THEN ? ELSE url END,
+              r2_key = CASE WHEN COALESCE(r2_key, '') = '' THEN ? ELSE r2_key END,
               updated_at = CASE WHEN COALESCE(updated_at, '') = '' THEN ? ELSE updated_at END
           WHERE id = ?
-        `, [content.url, content.updatedAt, existing.id])
+        `, [content.url, content.r2Key, content.updatedAt, existing.id])
         await tryRun(env, `
           DELETE FROM contents
           WHERE id LIKE 'r2_%'
@@ -692,9 +754,9 @@ export async function upsertR2ScanIntoD1(request, env) {
 
       const result = await tryRun(env, `
         INSERT OR REPLACE INTO contents
-        (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [content.id, content.store, content.side, content.type, content.title, content.duration, content.status, content.fileName, content.url, content.sortOrder, content.updatedAt])
+        (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [content.id, content.store, content.side, content.type, content.title, content.duration, content.status, content.fileName, content.url, content.sortOrder, content.updatedAt, content.r2Key])
       if (result?.success || result?.meta) insertedContents++
       if (result?.ok === false) errors.push(result.error)
     } catch (error) {

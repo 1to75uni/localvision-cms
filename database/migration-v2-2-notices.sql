@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS notices (
   priority TEXT DEFAULT 'normal',
   duration_sec INTEGER DEFAULT 15,
   repeat_mode TEXT DEFAULT 'once',
+  repeat_interval_min INTEGER DEFAULT 0,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP

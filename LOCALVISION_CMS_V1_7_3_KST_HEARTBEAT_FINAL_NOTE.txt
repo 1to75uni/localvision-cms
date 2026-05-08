@@ -1,4 +1,4 @@
-LocalVision CMS v1.7.3 KST Heartbeat Final
+LocalVision CMS v1.7.4 KST Heartbeat Final
 
 반영 내용
 1. 한국 시간(KST) 표시 보강

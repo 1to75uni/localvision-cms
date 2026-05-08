@@ -1,4 +1,4 @@
-import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, LV_CORE_VERSION } from '../_lib/localvision-core.js'
+import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, LV_CORE_VERSION, parseLastSeenMs, onlineTtlSec, DEFAULT_D1_HEARTBEAT_WRITE_SEC } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -193,6 +193,32 @@ export async function onRequestPatch({ request, env }) {
 
   const heartbeatOnly = isHeartbeatOnlyPatch(body, incoming)
 
+  if (heartbeatOnly) {
+    const nowMs = Date.now()
+    const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
+    const writeSec = Math.max(0, Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC || 600))
+    const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
+    const appChanged = String(app || '') !== String(current.app || '')
+    const shouldWriteHeartbeat = !lastWrittenMs || !wasFresh || appChanged || writeSec <= 0 || nowMs - lastWrittenMs >= writeSec * 1000
+
+    if (!shouldWriteHeartbeat) {
+      return json({
+        ok: true,
+        mode: 'heartbeat-accepted-d1-skipped',
+        d1Written: false,
+        d1WritePolicySec: writeSec,
+        device: mapDevice({
+          ...current,
+          lastSeen,
+          last_seen: lastSeen,
+          online,
+          app,
+          updatedAt: nowUtcIso(),
+        }, env),
+      })
+    }
+  }
+
   if (incoming.store) {
     // MVP는 URL 1개 = TV 1대 = store 기준입니다.
     // 같은 store에 오래된 device 행이 여러 개 있어도 APP이 어느 행을 먼저 보든 명령이 보이도록 store 전체에 반영합니다.
@@ -221,7 +247,7 @@ export async function onRequestPatch({ request, env }) {
 
   return json({
     ok: true,
-    mode: heartbeatOnly ? 'heartbeat-written' : (incoming.store ? 'store-based' : 'id-based'),
+    mode: heartbeatOnly ? 'heartbeat-written-d1' : (incoming.store ? 'store-based' : 'id-based'),
     d1Written: true,
     device: mapDevice({
       id: current.id,

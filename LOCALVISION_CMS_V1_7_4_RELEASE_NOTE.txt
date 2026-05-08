@@ -1,0 +1,17 @@
+LocalVision CMS v1.7.4 Stable Player State Release
+
+핵심 변경:
+1. CMS 버전 표기 v1.7.4로 통일.
+2. /api/player-state 추가: playlist, notice, command, appConfig, server time을 한 번에 반환.
+3. 기본 운영값 변경: noticePollMs=300000, playerStatePollMs=300000, appConfigPollMs=1800000.
+4. heartbeat D1 기록 최적화: heartbeat는 5분마다 받되, D1 기록은 기본 10분마다 또는 상태 변경/앱 변경 시 기록.
+5. contents/notices에 r2_key 컬럼 추가.
+6. DELETE /api/contents?id=...&deleteFile=1 시 D1 목록과 R2 실제 파일을 함께 삭제.
+7. DELETE /api/notices?id=...&deleteFile=1 시 공지 D1 목록과 R2 실제 파일을 함께 삭제.
+8. 공지 시간 입력은 한국시간(Asia/Seoul)으로 받고, 서버/D1에는 UTC ISO로 저장 및 비교.
+9. 공지 조회 응답에 startAtKst/endAtKst/serverNowKst 추가.
+
+주의:
+- 기존 D1은 ensureCoreSchema가 자동 보강합니다.
+- Cloudflare 바인딩(DB, MEDIA, R2_PUBLIC_BASE, ONLINE_TTL_SEC)은 기존 그대로 사용합니다.
+- APP 스크린샷 Native 기능은 APP 파일에서 별도 확인이 필요합니다.

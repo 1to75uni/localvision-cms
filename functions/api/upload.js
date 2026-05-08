@@ -142,14 +142,14 @@ export async function onRequestPost({ request, env }) {
     fileName,
     url: makePublicUrl(request, env, key),
     sortOrder: Date.now(),
-    updatedAt: new Date().toISOString().slice(0, 10),
+    updatedAt: new Date().toISOString(),
     r2Key: key,
   }
 
   await env.DB.prepare(`
     INSERT INTO contents
-    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     content.id,
     content.store,
@@ -161,7 +161,8 @@ export async function onRequestPost({ request, env }) {
     content.fileName,
     content.url,
     content.sortOrder,
-    content.updatedAt
+    content.updatedAt,
+    content.r2Key
   ).run()
 
   return json({

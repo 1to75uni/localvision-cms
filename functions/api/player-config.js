@@ -17,6 +17,7 @@ function normalizeContent(row) {
     url: row.url || '',
     sortOrder: Number(row.sortOrder || 0),
     updatedAt: row.updatedAt,
+    r2Key: row.r2Key || row.r2_key || '',
     updatedAtKst: row.updatedAt ? toKstString(row.updatedAt) : '',
   }
 }
@@ -68,7 +69,8 @@ export async function onRequestGet({ request, env }) {
           file_name AS fileName,
           url,
           sort_order AS sortOrder,
-          updated_at AS updatedAt
+          updated_at AS updatedAt,
+          r2_key AS r2Key
         FROM contents
         WHERE store = ?
           AND side = 'left'
@@ -88,7 +90,8 @@ export async function onRequestGet({ request, env }) {
           file_name AS fileName,
           url,
           sort_order AS sortOrder,
-          updated_at AS updatedAt
+          updated_at AS updatedAt,
+          r2_key AS r2Key
         FROM contents
         WHERE store = '_common'
           AND side = 'right'

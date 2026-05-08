@@ -59,11 +59,11 @@ export async function onRequestPost({ request, env }) {
 
   await env.MEDIA.put(key, file.stream(), {
     httpMetadata: {
-      contentType: file.type || 'application/octet-stream',
+      contentType: type === 'video' ? 'video/mp4' : (file.type || 'application/octet-stream'),
       cacheControl: 'public, max-age=31536000',
     },
     customMetadata: { store, type, originalName: file.name, purpose: 'notice' },
   })
 
-  return json({ ok: true, key, type, fileName, url: makePublicUrl(request, env, key) })
+  return json({ ok: true, key, r2Key: key, type, fileName, url: makePublicUrl(request, env, key) })
 }

@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-7-3-kst-heartbeat-final",
-  "version": "1.7.3-kst-heartbeat-final",
+  "name": "localvision-cms-v1-7-4-stable-player-state",
+  "version": "1.7.4-stable-player-state",
   "private": true,
-  "description": "LocalVision CMS v1.7.3: KST time display, every-heartbeat D1 last_seen update, grouped Player error logs, MP4 video/mp4 upload/media headers.",
+  "description": "LocalVision CMS v1.7.4: version labels aligned, /api/player-state added, notice KST fixed, R2 deleteFile supported, D1 heartbeat writes optimized.",
   "scripts": {
     "build": "node build-static.js"
   },

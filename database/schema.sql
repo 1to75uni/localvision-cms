@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS contents (
   file_name TEXT DEFAULT '',
   url TEXT DEFAULT '',
   sort_order INTEGER DEFAULT 0,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  r2_key TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS devices (
@@ -104,9 +105,12 @@ CREATE TABLE IF NOT EXISTS notices (
   priority TEXT DEFAULT 'normal',
   duration_sec INTEGER DEFAULT 15,
   repeat_mode TEXT DEFAULT 'once',
+  repeat_interval_min INTEGER DEFAULT 0,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  r2_key TEXT DEFAULT '',
+  timezone TEXT DEFAULT 'Asia/Seoul'
 );
 CREATE INDEX IF NOT EXISTS idx_notices_store_active ON notices(store, is_active);
 CREATE INDEX IF NOT EXISTS idx_notices_time ON notices(start_at, end_at);

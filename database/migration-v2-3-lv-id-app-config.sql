@@ -1,4 +1,4 @@
--- LocalVision CMS v1.7.1: lv001 app-config fields
+-- LocalVision CMS v1.7.4: lv001 app-config fields
 
 ALTER TABLE stores ADD COLUMN app_id TEXT DEFAULT '';
 ALTER TABLE stores ADD COLUMN player_url TEXT DEFAULT '';

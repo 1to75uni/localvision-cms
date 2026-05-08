@@ -32,7 +32,7 @@ configApi = https://localvision-cms.pages.dev/api/app-config
   "store": "banzzak",
   "storeName": "반짝이는 바다",
   "active": true,
-  "playerUrl": "https://localvision-player.pages.dev/?store=banzzak&id=lv001&apiBase=https%3A%2F%2Flocalvision-cms.pages.dev&heartbeat=300000&commandPoll=300000&noticePollMs=60000&cacheMax=20",
+  "playerUrl": "https://localvision-player.pages.dev/?store=banzzak&id=lv001&apiBase=https%3A%2F%2Flocalvision-cms.pages.dev&heartbeat=300000&commandPoll=300000&noticePollMs=300000&cacheMax=20",
   "defaults": {
     "heartbeat": 300000,
     "commandPoll": 300000,
