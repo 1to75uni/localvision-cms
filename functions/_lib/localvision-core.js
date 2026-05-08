@@ -155,15 +155,15 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.7.8-cors-safe-ui-polish'
+export const LV_CORE_VERSION = 'v1.8.0-stable-architecture-offline-first'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
 export const DEFAULT_NOTICE_POLL_MS = 60000
-export const DEFAULT_CONTENT_CHECK_MS = 480000
+export const DEFAULT_CONTENT_CHECK_MS = 900000
 export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
-export const DEFAULT_PLAYER_STATE_POLL_MS = 300000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 900000
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -775,6 +775,173 @@ export async function upsertR2ScanIntoD1(request, env) {
   const cleanup = await cleanupSyntheticR2Duplicates(env)
 
   return { ok: errors.length === 0, ...scan, insertedStores, insertedContents, insertedDevices, cleanup, errors }
+}
+
+
+
+// ===== LocalVision v1.8.0 Snapshot + Offline-first helpers =====
+// TV 재생 시점마다 R2 list/scan을 하지 않고, CMS에서 미리 만들어 둔 playlist snapshot JSON을 읽게 하기 위한 공통 함수입니다.
+export function playlistSnapshotKey(store = '', side = 'bundle') {
+  const cleanStore = cleanSlug(store || '')
+  if (side === 'right') return 'stores/_common/right/playlist.json'
+  if (side === 'left') return `stores/${cleanStore}/left/playlist.json`
+  return `stores/${cleanStore}/playlist.json`
+}
+
+export function playlistSnapshotUrl(request, env, store = '', side = 'bundle') {
+  return makePublicUrl(request, env, playlistSnapshotKey(store, side))
+}
+
+export function normalizeContentForPlayer(row = {}) {
+  return {
+    id: row.id,
+    store: row.store,
+    side: row.side,
+    type: row.type || detectTypeFromName(row.fileName || row.file_name || row.url || ''),
+    title: row.title || row.fileName || row.file_name || '',
+    duration: Number(row.duration || DEFAULT_CONTENT_DURATION),
+    status: row.status || '사용중',
+    fileName: row.fileName ?? row.file_name ?? '',
+    url: row.url || '',
+    sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0),
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+    updatedAtKst: (row.updatedAt ?? row.updated_at) ? toKstString(row.updatedAt ?? row.updated_at) : '',
+    r2Key: row.r2Key ?? row.r2_key ?? r2KeyFromUrl(row.url || ''),
+  }
+}
+
+export async function readContentsForPlaylist(env, store = '', side = 'left') {
+  if (!env.DB) return []
+  const targetStore = side === 'right' ? '_common' : cleanSlug(store || '')
+  if (!targetStore) return []
+  const { results } = await env.DB.prepare(`
+    SELECT id, store, side, type, title, duration, status,
+           file_name AS fileName, url, sort_order AS sortOrder,
+           updated_at AS updatedAt, r2_key AS r2Key
+    FROM contents
+    WHERE store = ? AND side = ? AND status = '사용중'
+    ORDER BY sort_order ASC, updated_at DESC
+  `).bind(targetStore, side).all()
+  return dedupeContentsRows(results || []).map(normalizeContentForPlayer).filter((item) => item.url)
+}
+
+export async function readStoreBySlugOrId(env, storeOrId = '') {
+  if (!env.DB) return null
+  const raw = String(storeOrId || '').trim()
+  if (!raw) return null
+  const appId = normalizeLvId(raw)
+  const slug = cleanSlug(raw)
+  return await env.DB.prepare(`
+    SELECT id, app_id AS appId, name, slug, category, address, contact, status, plan,
+           player_url AS playerUrl, player_url_updated_at AS playerUrlUpdatedAt,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM stores
+    WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?
+    LIMIT 1
+  `).bind(slug, appId || raw, raw).first()
+}
+
+function snapshotVersionOf(left = [], right = []) {
+  const light = { left: left.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder]), right: right.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder]) }
+  const text = JSON.stringify(light)
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
+  return `pl_${Math.abs(hash)}_${left.length}_${right.length}`
+}
+
+export async function makePlaylistSnapshot(request, env, store = '') {
+  const cleanStore = cleanSlug(store || '')
+  const left = await readContentsForPlaylist(env, cleanStore, 'left')
+  const right = await readContentsForPlaylist(env, '_common', 'right')
+  const now = nowUtcIso()
+  const playlistVersion = snapshotVersionOf(left, right)
+  return {
+    ok: true,
+    version: LV_CORE_VERSION,
+    mode: 'playlist-snapshot',
+    store: cleanStore,
+    playlistVersion,
+    layout: { leftRatio: 70, rightRatio: 30 },
+    playlists: { left, right },
+    playlistUrls: {
+      bundle: playlistSnapshotUrl(request, env, cleanStore, 'bundle'),
+      left: playlistSnapshotUrl(request, env, cleanStore, 'left'),
+      right: playlistSnapshotUrl(request, env, cleanStore, 'right'),
+    },
+    counts: { left: left.length, right: right.length },
+    updatedAt: now,
+    updatedAtKst: nowKstString(),
+  }
+}
+
+export async function writeJsonToR2(env, key, data) {
+  if (!env.MEDIA) return { ok: false, skipped: true, reason: 'R2 binding MEDIA is missing', key }
+  const body = JSON.stringify(data, null, 2)
+  await env.MEDIA.put(key, body, {
+    httpMetadata: {
+      contentType: 'application/json; charset=utf-8',
+      cacheControl: 'public, max-age=30, s-maxage=30',
+    },
+    customMetadata: {
+      kind: 'localvision-playlist-snapshot',
+      version: LV_CORE_VERSION,
+      updatedAt: data.updatedAt || nowUtcIso(),
+    },
+  })
+  return { ok: true, key, bytes: body.length }
+}
+
+
+export async function writeCommonRightSnapshot(request, env) {
+  const right = await readContentsForPlaylist(env, '_common', 'right')
+  const now = nowUtcIso()
+  const doc = {
+    ok: true,
+    version: LV_CORE_VERSION,
+    mode: 'playlist-snapshot',
+    store: '_common',
+    side: 'right',
+    playlistVersion: snapshotVersionOf([], right),
+    items: right,
+    playlists: { right },
+    playlistUrls: { right: playlistSnapshotUrl(request, env, '_common', 'right') },
+    counts: { right: right.length },
+    updatedAt: now,
+    updatedAtKst: nowKstString(),
+  }
+  const result = await writeJsonToR2(env, playlistSnapshotKey('_common', 'right'), doc)
+  return { ok: result.ok || result.skipped, snapshot: doc, result }
+}
+
+export async function writePlaylistSnapshots(request, env, store = '') {
+  const cleanStore = cleanSlug(store || '')
+  if (!cleanStore) return { ok: false, reason: 'store is required' }
+  const snapshot = await makePlaylistSnapshot(request, env, cleanStore)
+  const leftDoc = { ...snapshot, side: 'left', items: snapshot.playlists.left, playlists: { left: snapshot.playlists.left } }
+  const rightDoc = { ...snapshot, store: '_common', side: 'right', items: snapshot.playlists.right, playlists: { right: snapshot.playlists.right } }
+  const results = []
+  results.push(await writeJsonToR2(env, playlistSnapshotKey(cleanStore, 'bundle'), snapshot))
+  results.push(await writeJsonToR2(env, playlistSnapshotKey(cleanStore, 'left'), leftDoc))
+  results.push(await writeJsonToR2(env, playlistSnapshotKey('_common', 'right'), rightDoc))
+  return { ok: results.every((r) => r.ok || r.skipped), store: cleanStore, snapshot, results }
+}
+
+export async function readPlaylistSnapshotFromR2(request, env, store = '') {
+  if (!env.MEDIA) return null
+  const cleanStore = cleanSlug(store || '')
+  const key = playlistSnapshotKey(cleanStore, 'bundle')
+  const object = await env.MEDIA.get(key)
+  if (!object) return null
+  try {
+    const data = JSON.parse(await object.text())
+    return { ...data, source: 'r2-playlist-snapshot', snapshotKey: key, snapshotUrl: playlistSnapshotUrl(request, env, cleanStore, 'bundle') }
+  } catch {
+    return null
+  }
+}
+
+export function safeErrorMessage(error) {
+  return String(error?.message || error || 'unknown error').slice(0, 500)
 }
 
 export async function safeAll(env, sql, binds = []) {

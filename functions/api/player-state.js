@@ -1,14 +1,8 @@
 import {
   json,
-  DEFAULT_CONTENT_DURATION,
   LV_CORE_VERSION,
   ensureCoreSchema,
-  scanR2Media,
   mapDevice,
-  dedupeContentsRows,
-  cleanupSyntheticR2Duplicates,
-  cleanupDuplicateContents,
-  cleanupDuplicateDevices,
   dedupeDeviceRows,
   nowUtcIso,
   nowKstString,
@@ -27,26 +21,28 @@ import {
   parseLastSeenMs,
   onlineTtlSec,
   cleanSlug,
+  readStoreBySlugOrId,
+  readPlaylistSnapshotFromR2,
+  makePlaylistSnapshot,
+  writePlaylistSnapshots,
+  playlistSnapshotUrl,
+  safeErrorMessage,
 } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() { return json({ ok: true }) }
 
-function normalizeContent(row) {
-  return {
-    id: row.id,
-    store: row.store,
-    side: row.side,
-    type: row.type,
-    title: row.title,
-    duration: Number(row.duration || DEFAULT_CONTENT_DURATION),
-    status: row.status,
-    fileName: row.fileName ?? row.file_name ?? '',
-    url: row.url || '',
-    sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0),
-    updatedAt: row.updatedAt ?? row.updated_at ?? '',
-    updatedAtKst: (row.updatedAt ?? row.updated_at) ? toKstString(row.updatedAt ?? row.updated_at) : '',
-    r2Key: row.r2Key ?? row.r2_key ?? '',
-  }
+async function readBody(request) { try { return await request.json() } catch { return {} } }
+
+function safeStoreDeviceId(store = '') {
+  const clean = cleanSlug(store) || String(store || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+  return `tv_${clean}`
+}
+
+function makePlayerAppLabel(body = {}) {
+  const version = String(body.playerVersion || 'v1.7.0-offline-first').trim()
+  const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
+  const play = body.playStatus ? ` · ${body.playStatus}` : ''
+  return `Player ${version}${appShell}${play}`.slice(0, 240)
 }
 
 function mapNotice(row) {
@@ -78,20 +74,41 @@ function mapNotice(row) {
   }
 }
 
-async function readBody(request) {
-  try { return await request.json() } catch { return {} }
+function appConfigResponse(request, env, store) {
+  if (!store) return null
+  const appId = normalizeLvId(store.appId || store.app_id || '')
+  const overrideUrl = String(store.playerUrl || store.player_url || '').trim()
+  const playerUrl = buildPlayerUrl(request, env, store.slug, overrideUrl, appId)
+  const generatedPlayerUrl = buildPlayerUrl(request, env, store.slug, '', appId)
+  const isActive = !['중지', '비활성', '사용안함', 'inactive', 'disabled'].includes(String(store.status || '').toLowerCase())
+  return {
+    ok: true,
+    id: appId,
+    appId,
+    store: store.slug,
+    storeName: store.name,
+    status: store.status || '운영중',
+    active: isActive,
+    playerUrl,
+    generatedPlayerUrl,
+    playerBaseUrl: playerBaseUrl(request, env),
+    hasCustomPlayerUrl: Boolean(overrideUrl),
+    playerUrlUpdatedAt: store.playerUrlUpdatedAt || store.player_url_updated_at || '',
+  }
 }
 
-function safeStoreDeviceId(store = '') {
-  const clean = cleanSlug(store) || String(store || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-  return `tv_${clean}`
-}
-
-function makePlayerAppLabel(body = {}) {
-  const version = String(body.playerVersion || 'v1.6.10-cors-safe-fetch').trim()
-  const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
-  const play = body.playStatus ? ` · ${body.playStatus}` : ''
-  return `Player ${version}${appShell}${play}`.slice(0, 240)
+function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null) {
+  const light = {
+    playlistVersion: snapshot.playlistVersion || '',
+    counts: snapshot.counts || {},
+    notice: notice ? [notice.id, notice.updatedAt, notice.startAt, notice.endAt, notice.repeatMode] : null,
+    command: devices?.map((d) => [d.store, d.lastCommand, d.commandAt]) || [],
+    app: appConfig ? [appConfig.appId, appConfig.playerUrl, appConfig.active, appConfig.playerUrlUpdatedAt] : null,
+  }
+  let hash = 0
+  const text = JSON.stringify(light)
+  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
+  return `lvstate_${Math.abs(hash)}`
 }
 
 export async function onRequestPost({ request, env }) {
@@ -162,7 +179,6 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
-  await cleanupDuplicateDevices(env)
   const row = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY updated_at DESC LIMIT 1`).bind(resolvedStore).first()
   return json({
     ok: true,
@@ -175,113 +191,49 @@ export async function onRequestPost({ request, env }) {
   })
 }
 
-export async function onRequestPatch(ctx) {
-  return onRequestPost(ctx)
-}
-
-function appConfigResponse(request, env, store) {
-  if (!store) return null
-  const appId = normalizeLvId(store.appId || store.app_id || '')
-  const overrideUrl = String(store.playerUrl || store.player_url || '').trim()
-  const playerUrl = buildPlayerUrl(request, env, store.slug, overrideUrl, appId)
-  const generatedPlayerUrl = buildPlayerUrl(request, env, store.slug, '', appId)
-  const isActive = !['중지', '비활성', '사용안함', 'inactive', 'disabled'].includes(String(store.status || '').toLowerCase())
-  return {
-    ok: true,
-    id: appId,
-    appId,
-    store: store.slug,
-    storeName: store.name,
-    status: store.status || '운영중',
-    active: isActive,
-    playerUrl,
-    generatedPlayerUrl,
-    playerBaseUrl: playerBaseUrl(request, env),
-    hasCustomPlayerUrl: Boolean(overrideUrl),
-    playerUrlUpdatedAt: store.playerUrlUpdatedAt || store.player_url_updated_at || '',
-  }
-}
-
-function versionOf(items = [], notice = null, devices = [], appConfig = null) {
-  const light = {
-    left: items.left?.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder, x.status]) || [],
-    right: items.right?.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder, x.status]) || [],
-    notice: notice ? [notice.id, notice.updatedAt, notice.startAt, notice.endAt, notice.repeatMode] : null,
-    command: devices?.map((d) => [d.store, d.lastCommand, d.commandAt]) || [],
-    app: appConfig ? [appConfig.appId, appConfig.playerUrl, appConfig.active, appConfig.playerUrlUpdatedAt] : null,
-  }
-  let hash = 0
-  const text = JSON.stringify(light)
-  for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
-  return `lvstate_${Math.abs(hash)}`
-}
+export async function onRequestPatch(ctx) { return onRequestPost(ctx) }
 
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
   const storeSlug = url.searchParams.get('store') || ''
   const appId = url.searchParams.get('id') || url.searchParams.get('appId') || ''
-  if (!storeSlug && !appId) return json({ ok: false, error: 'store or id is required' }, 400)
-  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  const forceRebuild = ['1', 'true', 'yes'].includes(String(url.searchParams.get('rebuild') || '').toLowerCase())
+  if (!storeSlug && !appId) return json({ ok: false, errorCode: 'LV-STORE-MISSING', error: 'store or id is required' }, 400)
+  if (!env.DB) return json({ ok: false, errorCode: 'LV-DB-MISSING', error: 'D1 binding DB is missing' }, 500)
 
-  await ensureCoreSchema(env)
-  await cleanupSyntheticR2Duplicates(env)
-  await cleanupDuplicateContents(env)
-  await cleanupDuplicateDevices(env)
+  const diagnostics = []
+  try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
 
   let store = null
   if (appId) store = await findStoreForAppConfig(env, appId)
-  if (!store && storeSlug) {
-    store = await env.DB.prepare(`
-      SELECT id, app_id AS appId, name, slug, category, address, contact, status, plan,
-             player_url AS playerUrl, player_url_updated_at AS playerUrlUpdatedAt, created_at AS createdAt
-      FROM stores
-      WHERE slug = ?
-      LIMIT 1
-    `).bind(storeSlug).first()
+  if (!store && storeSlug) store = await readStoreBySlugOrId(env, storeSlug)
+  const resolvedStore = store?.slug || cleanSlug(storeSlug)
+  if (!resolvedStore) return json({ ok: false, errorCode: 'LV-STORE-NOT-FOUND', error: 'store not found' }, 404)
+
+  let snapshot = null
+  let source = 'r2-playlist-snapshot'
+  if (!forceRebuild) {
+    try { snapshot = await readPlaylistSnapshotFromR2(request, env, resolvedStore) } catch (error) { diagnostics.push(`readSnapshot: ${safeErrorMessage(error)}`) }
   }
-  const resolvedStore = store?.slug || storeSlug
-  if (!resolvedStore) return json({ ok: false, error: 'store not found' }, 404)
-
-  let source = 'd1'
-  let leftItems = []
-  let rightItems = []
-
-  const left = await env.DB.prepare(`
-    SELECT id, store, side, type, title, duration, status, file_name AS fileName, url,
-           sort_order AS sortOrder, updated_at AS updatedAt, r2_key AS r2Key
-    FROM contents
-    WHERE store = ? AND side = 'left' AND status = '사용중'
-    ORDER BY sort_order ASC, updated_at DESC
-  `).bind(resolvedStore).all()
-
-  const right = await env.DB.prepare(`
-    SELECT id, store, side, type, title, duration, status, file_name AS fileName, url,
-           sort_order AS sortOrder, updated_at AS updatedAt, r2_key AS r2Key
-    FROM contents
-    WHERE store = '_common' AND side = 'right' AND status = '사용중'
-    ORDER BY sort_order ASC, updated_at DESC
-  `).all()
-
-  leftItems = dedupeContentsRows(left.results || []).map(normalizeContent)
-  rightItems = dedupeContentsRows(right.results || []).map(normalizeContent)
-
-  if ((!store || !leftItems.length || !rightItems.length) && env.MEDIA) {
-    const scan = await scanR2Media(request, env)
-    const foundStore = scan.stores.find((item) => item.slug === resolvedStore)
-    if (!store && foundStore) store = foundStore
-    if (!leftItems.length) leftItems = dedupeContentsRows(scan.contents).filter((item) => item.store === resolvedStore && item.side === 'left').map(normalizeContent)
-    if (!rightItems.length) rightItems = dedupeContentsRows(scan.contents).filter((item) => item.store === '_common' && item.side === 'right').map(normalizeContent)
-    source = 'd1+r2-fallback'
+  if (!snapshot) {
+    try {
+      const written = await writePlaylistSnapshots(request, env, resolvedStore)
+      snapshot = written.snapshot
+      source = 'd1-built-and-snapshotted'
+    } catch (error) {
+      diagnostics.push(`writeSnapshot: ${safeErrorMessage(error)}`)
+      snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
+      source = 'd1-live-fallback'
+    }
   }
-
-  if (!store) return json({ ok: false, error: 'store not found', source }, 404)
 
   const deviceRows = await env.DB.prepare(`
     SELECT id, store, name, role, online, last_seen AS lastSeen, app, device_code AS deviceCode,
            last_command AS lastCommand, command_at AS commandAt, updated_at AS updatedAt
     FROM devices
     WHERE store = ?
-    ORDER BY created_at DESC
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 5
   `).bind(resolvedStore).all()
   const devices = dedupeDeviceRows(deviceRows.results || [], env).map((device) => mapDevice(device, env))
   const myDevice = devices.find((d) => d.store === resolvedStore) || devices[0] || null
@@ -293,34 +245,47 @@ export async function onRequestGet({ request, env }) {
     store: myDevice.store,
   } : null
 
-  const now = nowUtcIso()
-  const noticeRow = await env.DB.prepare(`
-    SELECT id, store, title, type, message, media_url AS mediaUrl, link_url AS linkUrl,
-           file_name AS fileName, r2_key AS r2Key, start_at AS startAt, end_at AS endAt,
-           display_mode AS displayMode, priority, duration_sec AS durationSec,
-           repeat_mode AS repeatMode, repeat_interval_min AS repeatIntervalMin, is_active AS isActive, updated_at AS updatedAt
-    FROM notices
-    WHERE (store = ? OR store = '_all')
-      AND is_active = 1
-      AND (start_at = '' OR start_at <= ?)
-      AND (end_at = '' OR end_at >= ?)
-    ORDER BY CASE priority WHEN 'urgent' THEN 0 ELSE 1 END, updated_at DESC
-    LIMIT 1
-  `).bind(resolvedStore, now, now).first()
-  const notice = mapNotice(noticeRow)
-  const appConfig = appConfigResponse(request, env, store)
+  let notice = null
+  try {
+    const now = nowUtcIso()
+    const noticeRow = await env.DB.prepare(`
+      SELECT id, store, title, type, message, media_url AS mediaUrl, link_url AS linkUrl,
+             file_name AS fileName, r2_key AS r2Key, start_at AS startAt, end_at AS endAt,
+             display_mode AS displayMode, priority, duration_sec AS durationSec,
+             repeat_mode AS repeatMode, repeat_interval_min AS repeatIntervalMin, is_active AS isActive, updated_at AS updatedAt
+      FROM notices
+      WHERE (store = ? OR store = '_all')
+        AND is_active = 1
+        AND (start_at = '' OR start_at <= ?)
+        AND (end_at = '' OR end_at >= ?)
+      ORDER BY CASE priority WHEN 'urgent' THEN 0 ELSE 1 END, updated_at DESC
+      LIMIT 1
+    `).bind(resolvedStore, now, now).first()
+    notice = mapNotice(noticeRow)
+  } catch (error) { diagnostics.push(`notice: ${safeErrorMessage(error)}`) }
 
-  const playlists = { left: leftItems, right: rightItems }
-  const version = versionOf(playlists, notice, devices, appConfig)
+  const appConfig = appConfigResponse(request, env, store || { slug: resolvedStore, name: resolvedStore, status: '운영중' })
+  const version = versionOf(snapshot, notice, devices, appConfig)
+  const now = nowUtcIso()
 
   return json({
     ok: true,
     version: LV_CORE_VERSION,
     source,
     endpoint: '/api/player-state',
-    store,
+    mode: 'snapshot-first',
+    store: store || { slug: resolvedStore, name: resolvedStore, status: '운영중' },
     appConfig,
-    playlistVersion: version,
+    playlistVersion: snapshot.playlistVersion || version,
+    stateVersion: version,
+    playlistUrl: playlistSnapshotUrl(request, env, resolvedStore, 'bundle'),
+    playlistUrls: {
+      bundle: playlistSnapshotUrl(request, env, resolvedStore, 'bundle'),
+      left: playlistSnapshotUrl(request, env, resolvedStore, 'left'),
+      right: playlistSnapshotUrl(request, env, resolvedStore, 'right'),
+    },
+    playlists: snapshot.playlists || { left: [], right: [] },
+    counts: snapshot.counts || {},
     noticeVersion: notice ? `${notice.id}:${notice.updatedAt || ''}` : '',
     commandVersion: command ? `${command.command}:${command.commandAt || ''}` : '',
     serverNowUtc: now,
@@ -336,11 +301,11 @@ export async function onRequestGet({ request, env }) {
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
     },
     layout: { leftRatio: 70, rightRatio: 30 },
-    playlists,
     notice,
     activeNotice: notice,
     command,
     devices,
+    diagnostics,
     updatedAt: now,
     updatedAtKst: nowKstString(),
   })

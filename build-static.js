@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.7.8 API-STABLE static build: Player-centric CMS with ping/retry guard; dist refreshed.');
+console.log('LocalVision CMS v1.8.0 STABLE ARCHITECTURE static build: snapshot + offline-first API; dist refreshed.');

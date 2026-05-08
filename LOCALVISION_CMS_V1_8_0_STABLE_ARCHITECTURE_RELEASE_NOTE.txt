@@ -1,0 +1,20 @@
+LocalVision CMS v1.8.0 STABLE ARCHITECTURE + OFFLINE-FIRST
+
+핵심 변경:
+1. /api/player-config, /api/player-state를 snapshot-first 구조로 변경.
+2. TV 재생 시점마다 R2 list/scan을 하지 않고 stores/{store}/playlist.json snapshot을 우선 사용.
+3. 콘텐츠 업로드/등록/삭제 시 playlist snapshot 자동 생성.
+4. /api/snapshot-rebuild?store=매장코드 추가: 특정 매장의 playlist snapshot 강제 재생성.
+5. player-config/player-state는 실패해도 CORS-safe JSON 응답 유지.
+6. heartbeat D1 write는 기존 10분/상태변경 기준 유지.
+7. 기존 /api/app-config, /api/player-config, /api/player-state, /api/media, /api/player-errors 호환 유지.
+
+운영 확인:
+- /api/health
+- /api/player-config?store=매장코드
+- /api/player-state?store=매장코드
+- /api/snapshot-rebuild?store=매장코드
+
+주의:
+- D1/R2를 삭제하거나 초기화하지 않습니다.
+- 기존 데이터 유지 + API/Player 구조만 안정화합니다.

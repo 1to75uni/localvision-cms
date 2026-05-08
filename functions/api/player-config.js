@@ -1,161 +1,112 @@
-import { json, DEFAULT_CONTENT_DURATION, LV_CORE_VERSION, ensureCoreSchema, scanR2Media, mapDevice, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, nowKstString, toKstString } from '../_lib/localvision-core.js'
+import {
+  json,
+  LV_CORE_VERSION,
+  ensureCoreSchema,
+  readStoreBySlugOrId,
+  makePlaylistSnapshot,
+  readPlaylistSnapshotFromR2,
+  writePlaylistSnapshots,
+  playlistSnapshotUrl,
+  mapDevice,
+  dedupeDeviceRows,
+  nowUtcIso,
+  nowKstString,
+  DEFAULT_HEARTBEAT_MS,
+  DEFAULT_COMMAND_POLL_MS,
+  DEFAULT_NOTICE_POLL_MS,
+  DEFAULT_CONTENT_CHECK_MS,
+  DEFAULT_APP_CONFIG_POLL_MS,
+  DEFAULT_PLAYER_STATE_POLL_MS,
+  DEFAULT_D1_HEARTBEAT_WRITE_SEC,
+  safeErrorMessage,
+} from '../_lib/localvision-core.js'
 
-export async function onRequestOptions() {
-  return json({ ok: true })
-}
+export async function onRequestOptions() { return json({ ok: true }) }
 
-function normalizeContent(row) {
-  return {
-    id: row.id,
-    store: row.store,
-    side: row.side,
-    type: row.type,
-    title: row.title,
-    duration: Number(row.duration || DEFAULT_CONTENT_DURATION),
-    status: row.status,
-    fileName: row.fileName,
-    url: row.url || '',
-    sortOrder: Number(row.sortOrder || 0),
-    updatedAt: row.updatedAt,
-    r2Key: row.r2Key || row.r2_key || '',
-    updatedAtKst: row.updatedAt ? toKstString(row.updatedAt) : '',
-  }
+async function readDevices(env, store) {
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT id, store, name, role, online, last_seen AS lastSeen, app, device_code AS deviceCode,
+             last_command AS lastCommand, command_at AS commandAt, updated_at AS updatedAt
+      FROM devices
+      WHERE store = ?
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 5
+    `).bind(store).all()
+    return dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env))
+  } catch { return [] }
 }
 
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
-  const storeSlug = url.searchParams.get('store') || ''
+  const storeParam = url.searchParams.get('store') || url.searchParams.get('id') || url.searchParams.get('appId') || ''
+  const forceRebuild = ['1', 'true', 'yes'].includes(String(url.searchParams.get('rebuild') || '').toLowerCase())
+  if (!storeParam) return json({ ok: false, errorCode: 'LV-STORE-MISSING', error: 'store or id is required' }, 400)
+  if (!env.DB) return json({ ok: false, errorCode: 'LV-DB-MISSING', error: 'D1 binding DB is missing' }, 500)
 
-  if (!storeSlug) {
-    return json({ ok: false, error: 'store is required' }, 400)
+  let diagnostics = []
+  try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
+
+  const store = await readStoreBySlugOrId(env, storeParam)
+  const resolvedStore = store?.slug || String(storeParam || '').trim().toLowerCase()
+  if (!resolvedStore) return json({ ok: false, errorCode: 'LV-STORE-NOT-FOUND', error: 'store not found' }, 404)
+
+  let snapshot = null
+  let source = 'r2-playlist-snapshot'
+
+  if (!forceRebuild) {
+    try { snapshot = await readPlaylistSnapshotFromR2(request, env, resolvedStore) } catch (error) { diagnostics.push(`readSnapshot: ${safeErrorMessage(error)}`) }
   }
 
-  let store = null
-  let leftItems = []
-  let rightItems = []
-  let devices = []
-  let source = 'd1'
-
-  if (env.DB) {
+  if (!snapshot) {
     try {
-      await ensureCoreSchema(env)
-      await cleanupSyntheticR2Duplicates(env)
-      await cleanupDuplicateContents(env)
-      await cleanupDuplicateDevices(env)
-      store = await env.DB.prepare(`
-        SELECT
-          id,
-          name,
-          slug,
-          category,
-          address,
-          contact,
-          status,
-          plan,
-          created_at AS createdAt
-        FROM stores
-        WHERE slug = ?
-      `).bind(storeSlug).first()
-
-      const left = await env.DB.prepare(`
-        SELECT
-          id,
-          store,
-          side,
-          type,
-          title,
-          duration,
-          status,
-          file_name AS fileName,
-          url,
-          sort_order AS sortOrder,
-          updated_at AS updatedAt,
-          r2_key AS r2Key
-        FROM contents
-        WHERE store = ?
-          AND side = 'left'
-          AND status = '사용중'
-        ORDER BY sort_order ASC, updated_at DESC
-      `).bind(storeSlug).all()
-
-      const right = await env.DB.prepare(`
-        SELECT
-          id,
-          store,
-          side,
-          type,
-          title,
-          duration,
-          status,
-          file_name AS fileName,
-          url,
-          sort_order AS sortOrder,
-          updated_at AS updatedAt,
-          r2_key AS r2Key
-        FROM contents
-        WHERE store = '_common'
-          AND side = 'right'
-          AND status = '사용중'
-        ORDER BY sort_order ASC, updated_at DESC
-      `).all()
-
-      const deviceRows = await env.DB.prepare(`
-        SELECT
-          id,
-          store,
-          name,
-          role,
-          online,
-          last_seen AS lastSeen,
-          app,
-          device_code AS deviceCode,
-          last_command AS lastCommand,
-          command_at AS commandAt,
-          updated_at AS updatedAt
-        FROM devices
-        WHERE store = ?
-        ORDER BY created_at DESC
-      `).bind(storeSlug).all()
-
-      leftItems = dedupeContentsRows(left.results || []).map(normalizeContent)
-      rightItems = dedupeContentsRows(right.results || []).map(normalizeContent)
-      devices = dedupeDeviceRows(deviceRows.results || [], env).map((device) => mapDevice(device, env))
+      const written = await writePlaylistSnapshots(request, env, resolvedStore)
+      snapshot = written.snapshot
+      source = 'd1-built-and-snapshotted'
+      diagnostics.push(...(written.results || []).filter((r) => !r.ok).map((r) => `snapshotWrite:${r.reason || r.key}`))
     } catch (error) {
-      source = `d1-error: ${String(error?.message || error)}`
+      diagnostics.push(`writeSnapshot: ${safeErrorMessage(error)}`)
+      try {
+        snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
+        source = 'd1-live-fallback'
+      } catch (inner) {
+        return json({ ok: false, errorCode: 'LV-PLAYLIST-BUILD-FAILED', error: safeErrorMessage(inner), diagnostics }, 200)
+      }
     }
   }
 
-  if ((!store || !leftItems.length || !rightItems.length) && env.MEDIA) {
-    const scan = await scanR2Media(request, env)
-    const foundStore = scan.stores.find((item) => item.slug === storeSlug)
-    if (!store && foundStore) store = foundStore
-    if (!leftItems.length) {
-      leftItems = dedupeContentsRows(scan.contents).filter((item) => item.store === storeSlug && item.side === 'left').map(normalizeContent)
-    }
-    if (!rightItems.length) {
-      rightItems = dedupeContentsRows(scan.contents).filter((item) => item.store === '_common' && item.side === 'right').map(normalizeContent)
-    }
-    source = source === 'd1' ? 'd1+r2-fallback' : `${source}+r2-fallback`
-  }
-
-  if (!store) {
-    return json({ ok: false, error: 'store not found', source }, 404)
-  }
-
+  const devices = await readDevices(env, resolvedStore)
   return json({
     ok: true,
     version: LV_CORE_VERSION,
+    endpoint: '/api/player-config',
+    mode: 'snapshot-first',
     source,
-    store,
-    layout: {
-      leftRatio: 70,
-      rightRatio: 30,
+    store: store || { slug: resolvedStore, name: resolvedStore, status: '운영중' },
+    playlistVersion: snapshot.playlistVersion || snapshot.version || '',
+    playlistUrl: playlistSnapshotUrl(request, env, resolvedStore, 'bundle'),
+    playlistUrls: {
+      bundle: playlistSnapshotUrl(request, env, resolvedStore, 'bundle'),
+      left: playlistSnapshotUrl(request, env, resolvedStore, 'left'),
+      right: playlistSnapshotUrl(request, env, resolvedStore, 'right'),
     },
-    playlists: {
-      left: leftItems,
-      right: rightItems,
+    playlists: snapshot.playlists || { left: [], right: [] },
+    counts: snapshot.counts || {
+      left: Array.isArray(snapshot.playlists?.left) ? snapshot.playlists.left.length : 0,
+      right: Array.isArray(snapshot.playlists?.right) ? snapshot.playlists.right.length : 0,
     },
     devices,
+    defaults: {
+      heartbeat: DEFAULT_HEARTBEAT_MS,
+      playerStatePollMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      commandPoll: DEFAULT_COMMAND_POLL_MS,
+      noticePollMs: DEFAULT_NOTICE_POLL_MS,
+      contentCheck: DEFAULT_CONTENT_CHECK_MS,
+      appConfigPollMs: DEFAULT_APP_CONFIG_POLL_MS,
+      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 600),
+      d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
+    },
+    diagnostics,
     updatedAt: nowUtcIso(),
     updatedAtKst: nowKstString(),
   })

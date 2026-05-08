@@ -1,4 +1,4 @@
-// LocalVision CMS v1.7.8 CORS Safe + UI Polish
+// LocalVision CMS v1.8.0 Stable Architecture + Offline First
 // 모든 /api/* 요청에서 CORS preflight와 예외 응답을 안전하게 처리합니다.
 import { corsHeaders } from './_lib/localvision-core.js'
 
@@ -22,7 +22,7 @@ export async function onRequest(context) {
       ok: false,
       error: error?.message || 'Unhandled CMS API error',
       endpoint: new URL(context.request.url).pathname,
-      version: 'v1.7.8-cors-safe-ui-polish',
+      version: 'v1.8.0-stable-architecture-offline-first',
     }, null, 2), {
       status: 500,
       headers: {

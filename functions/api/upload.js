@@ -1,4 +1,4 @@
-import { ensureCoreSchema, DEFAULT_CONTENT_DURATION } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -165,9 +165,17 @@ export async function onRequestPost({ request, env }) {
     content.r2Key
   ).run()
 
+  let snapshot = null
+  try {
+    snapshot = store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, store)
+  } catch (error) {
+    snapshot = { ok: false, reason: String(error?.message || error) }
+  }
+
   return json({
     ok: true,
     key,
     content,
+    snapshot,
   })
 }

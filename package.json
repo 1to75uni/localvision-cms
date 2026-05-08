@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-7-6-api-stable-player-centric",
-  "version": "1.7.6-api-stable-player-centric",
+  "name": "localvision-cms-v1-8-0-stable-architecture",
+  "version": "1.8.0-stable-architecture",
   "private": true,
-  "description": "LocalVision CMS v1.7.8: API-STABLE guard, lightweight /api/ping, Player-centric state, D1 write optimization.",
+  "description": "LocalVision CMS v1.8.0: playlist snapshot + offline-first architecture, lighter D1/R2 usage, CORS-safe APIs.",
   "scripts": {
     "build": "node build-static.js"
   },

@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, r2KeyFromUrl } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -104,7 +104,11 @@ export async function onRequestPost({ request, env }) {
     content.sortOrder, content.updatedAt, content.r2Key
   ).run()
 
-  return json({ ok: true, content })
+  let snapshot = null
+  try { snapshot = content.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, content.store) }
+  catch (error) { snapshot = { ok: false, reason: String(error?.message || error) } }
+
+  return json({ ok: true, content, snapshot })
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -154,8 +158,13 @@ export async function onRequestDelete({ request, env }) {
 
   const result = await env.DB.prepare(`DELETE FROM contents WHERE id = ?`).bind(id).run()
 
+  let snapshot = null
+  try { snapshot = row.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, row.store) }
+  catch (error) { snapshot = { ok: false, reason: String(error?.message || error) } }
+
   return json({
     ok: true,
+    snapshot,
     deleted: id,
     dbDeleted: Boolean(result?.success ?? true),
     r2Deleted,
