@@ -1,0 +1,17 @@
+LocalVision CMS v1.7.7 Immediate API Boot
+
+목표:
+- CMS 페이지를 클릭/접속하면 API가 즉시 1회 호출되어야 한다.
+- 첫 호출과 정기 호출/화면 본체 호출을 분리한다.
+- 실패한 API를 오래 붙잡아 CMS 화면 전체가 멈춘 것처럼 보이는 문제를 줄인다.
+
+핵심 변경:
+1. /assets/lv-cms-api-immediate-v177.js 추가
+2. CMS 진입 즉시 /api/ping, /api/health, /api/stores를 병렬 호출
+3. window.fetch guard는 긴 대기 재시도 대신 빠른 실패 감지 + 백그라운드 재연결 확인으로 변경
+4. 다른 apiBase가 꼬인 경우 현재 CMS 도메인 기준 fallback 시도
+5. 페이지 show/focus/visible 복귀 때도 API 즉시 확인
+
+운영 원칙:
+- 첫 호출은 즉시 실행
+- 이후 호출은 CMS 화면/Player URL에서 지정한 주기대로 수행

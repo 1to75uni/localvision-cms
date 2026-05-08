@@ -147,7 +147,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.7.6-api-stable-player-centric'
+export const LV_CORE_VERSION = 'v1.7.7-immediate-api-boot'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
