@@ -1,12 +1,20 @@
-export function json(data, status = 200) {
+export function corsHeaders(extra = {}) {
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
+    'access-control-allow-headers': 'content-type,range,cache-control,pragma,authorization,x-lv-admin-token',
+    'access-control-expose-headers': 'content-length,content-range,accept-ranges,etag,content-type',
+    'cache-control': 'no-store, no-cache, must-revalidate',
+    ...extra,
+  }
+}
+
+export function json(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'access-control-allow-headers': 'content-type,range',
-      'cache-control': 'no-store, no-cache, must-revalidate',
+      ...corsHeaders(extraHeaders),
     },
   })
 }
@@ -147,7 +155,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.7.7-immediate-api-boot'
+export const LV_CORE_VERSION = 'v1.7.8-cors-safe-ui-polish'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000

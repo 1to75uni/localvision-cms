@@ -1,9 +1,9 @@
-// LocalVision CMS v1.7.7 Immediate API Boot guard
+// LocalVision CMS v1.7.8 CORS SAFE + UI POLISH guard
 // 목표: CMS 페이지를 여는 즉시 API를 1회 호출하고, 이후 호출은 CMS 화면/정해진 주기에 맡깁니다.
 // 원칙: fetch 응답을 60초씩 붙잡아 화면을 멈추게 하지 않습니다. 실패 감지는 빠르게, 재연결 감지는 백그라운드로 처리합니다.
 (function () {
-  if (window.__LV_CMS_API_IMMEDIATE_V177__) return;
-  window.__LV_CMS_API_IMMEDIATE_V177__ = true;
+  if (window.__LV_CMS_API_IMMEDIATE_V178__) return;
+  window.__LV_CMS_API_IMMEDIATE_V178__ = true;
 
   var originalFetch = window.fetch.bind(window);
   var currentOrigin = window.location.origin;
@@ -33,7 +33,7 @@
 
   function withNoStore(init) {
     var merged = Object.assign({ cache: 'no-store' }, init || {});
-    merged.headers = Object.assign({ 'cache-control': 'no-store', 'pragma': 'no-cache' }, (init && init.headers) || {});
+    merged.headers = Object.assign({}, (init && init.headers) || {});
     return merged;
   }
 

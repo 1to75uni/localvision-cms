@@ -30,7 +30,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.7.6-api-stable-player-centric',
+    version: 'v1.7.8-cors-safe-ui-polish',
     message: 'D1/R2 repair completed. Contents and devices are now store-canonicalized.',
     r2Sync,
     syntheticCleanup,

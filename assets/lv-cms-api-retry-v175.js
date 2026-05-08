@@ -27,7 +27,7 @@
       if (delays[i]) await sleep(delays[i]);
       try {
         var merged = Object.assign({ cache: 'no-store' }, init || {});
-        merged.headers = Object.assign({ 'cache-control': 'no-store' }, (init && init.headers) || {});
+        merged.headers = Object.assign({}, (init && init.headers) || {});
         var res = await originalFetch(input, merged);
         if (res.ok) return res;
         lastError = new Error('HTTP ' + res.status);

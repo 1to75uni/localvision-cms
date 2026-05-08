@@ -1,8 +1,8 @@
 function corsHeaders() {
   return {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,HEAD,OPTIONS',
-    'access-control-allow-headers': 'range,content-type',
+    'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
+    'access-control-allow-headers': 'content-type,range,cache-control,pragma,authorization,x-lv-admin-token',
     'access-control-expose-headers': 'content-length,content-range,accept-ranges,etag,content-type',
   }
 }

@@ -1,9 +1,9 @@
-// LocalVision CMS v1.7.6 API-STABLE guard
+// LocalVision CMS v1.7.8 CORS SAFE + UI POLISH guard
 // 목적: CMS 첫 접속/운영 중 Cloudflare Functions, D1, R2, 브라우저 캐시의 순간 지연으로
 //       서버 연결 전 상태가 오래 유지되는 문제를 줄입니다.
 (function () {
-  if (window.__LV_CMS_API_STABLE_V176__) return;
-  window.__LV_CMS_API_STABLE_V176__ = true;
+  if (window.__LV_CMS_API_STABLE_V178__) return;
+  window.__LV_CMS_API_STABLE_V178__ = true;
 
   var originalFetch = window.fetch.bind(window);
   var API_RE = /\/api\//;
@@ -37,10 +37,7 @@
 
   function withNoStore(input, init) {
     var merged = Object.assign({ cache: 'no-store' }, init || {});
-    merged.headers = Object.assign(
-      { 'cache-control': 'no-store', 'pragma': 'no-cache' },
-      (init && init.headers) || {}
-    );
+    merged.headers = Object.assign({}, (init && init.headers) || {});
     return merged;
   }
 

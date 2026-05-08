@@ -88,7 +88,7 @@ function safeStoreDeviceId(store = '') {
 }
 
 function makePlayerAppLabel(body = {}) {
-  const version = String(body.playerVersion || 'v1.6.8-url-operation-core').trim()
+  const version = String(body.playerVersion || 'v1.6.10-cors-safe-fetch').trim()
   const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
   const play = body.playStatus ? ` · ${body.playStatus}` : ''
   return `Player ${version}${appShell}${play}`.slice(0, 240)

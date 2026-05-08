@@ -85,8 +85,8 @@ export function authJson(data, status = 200, extraHeaders = {}) {
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'access-control-allow-headers': 'content-type,range,x-lv-admin-token',
+      'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
+      'access-control-allow-headers': 'content-type,range,cache-control,pragma,authorization,x-lv-admin-token',
       'cache-control': 'no-store, no-cache, must-revalidate',
       ...extraHeaders,
     },
