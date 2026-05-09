@@ -1,4 +1,4 @@
-LocalVision CMS v1.8.1 API DIET + OFFLINE-FIRST
+LocalVision CMS v1.8.2 API DIET + OFFLINE-FIRST
 
 핵심 변경:
 1. /api/player-config, /api/player-state를 snapshot-first 구조로 변경.

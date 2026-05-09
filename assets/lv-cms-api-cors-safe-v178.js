@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.1 API DIET guard
+// LocalVision CMS v1.8.2 API DIET guard
 // 목표: CMS 페이지를 여는 즉시 API를 1회 호출하고, 이후 호출은 CMS 화면/정해진 주기에 맡깁니다.
 // 원칙: fetch 응답을 60초씩 붙잡아 화면을 멈추게 하지 않습니다. 실패 감지는 빠르게, 재연결 감지는 백그라운드로 처리합니다.
 (function () {
@@ -121,7 +121,7 @@
   }
 
   // CMS 진입 즉시 서버/API를 가볍게 1회 확인합니다.
-  // v1.8.1부터 첫 연결 확인은 /api/ping만 호출합니다.
+  // v1.8.2부터 첫 연결 확인은 /api/ping만 호출합니다.
   // /api/health, /api/stores는 React 화면이 실제로 필요할 때만 호출하게 두어 D1 503/과호출을 줄입니다.
   var lastBootCheckAt = 0;
   async function immediateApiBoot(reason) {

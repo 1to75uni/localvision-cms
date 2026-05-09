@@ -155,7 +155,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.1-api-diet-heartbeat-lite'
+export const LV_CORE_VERSION = 'v1.8.2-api-diet-heartbeat-lite'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -271,6 +271,8 @@ function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
   if (!url.searchParams.has('videoMode')) url.searchParams.set('videoMode', 'cache')
   if (!url.searchParams.has('cacheVia')) url.searchParams.set('cacheVia', 'api')
   if (!url.searchParams.has('activateWhenCached')) url.searchParams.set('activateWhenCached', '1')
+  // Player v1.7.2 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
+  if (!url.searchParams.has('snapshotFetch')) url.searchParams.set('snapshotFetch', '0')
   if (!url.searchParams.has('fit')) url.searchParams.set('fit', 'cover')
   return url
 }
@@ -779,7 +781,7 @@ export async function upsertR2ScanIntoD1(request, env) {
 
 
 
-// ===== LocalVision v1.8.1 API Diet + Heartbeat Lite helpers =====
+// ===== LocalVision v1.8.2 API Diet + Heartbeat Lite helpers =====
 // TV 재생 시점마다 R2 list/scan을 하지 않고, CMS에서 미리 만들어 둔 playlist snapshot JSON을 읽게 하기 위한 공통 함수입니다.
 export function playlistSnapshotKey(store = '', side = 'bundle') {
   const cleanStore = cleanSlug(store || '')

@@ -39,7 +39,7 @@ function mapContent(row = {}) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  // v1.8.1: 콘텐츠 목록 조회는 schema repair/중복정리 없이 가볍게 실행합니다.
+  // v1.8.2: 콘텐츠 목록 조회는 schema repair/중복정리 없이 가볍게 실행합니다.
   // 중복 정리는 /api/repair에서 수동 실행합니다.
   const url = new URL(request.url)
   const store = url.searchParams.get('store')

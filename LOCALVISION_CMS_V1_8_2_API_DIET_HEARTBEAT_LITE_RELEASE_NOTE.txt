@@ -1,0 +1,16 @@
+LocalVision CMS v1.8.2 API DIET HEARTBEAT LITE
+
+Player v1.7.2 현장 로그 안정화 대응 CMS 소폭 패치입니다.
+
+핵심 변경:
+1. buildPlayerUrl 기본값에 snapshotFetch=0을 명시합니다.
+   - Player가 /api/player-state playlists payload를 우선 사용
+   - public R2 playlist.json 직접 fetch 실패 로그 감소
+
+2. API 버전 표기를 v1.8.2로 갱신합니다.
+
+3. heartbeat/player-state의 기본 Player 라벨을 v1.7.2-field-log-fix로 맞췄습니다.
+
+주의:
+- React UI 빌드 파일은 v1.8.2 문구까지 점검했습니다.
+- 기능 API 기준 버전은 /api/health에서 v1.8.2로 확인합니다.

@@ -1,4 +1,4 @@
-LocalVision CMS v1.8.1 API DIET + HEARTBEAT LITE
+LocalVision CMS v1.8.2 API DIET + HEARTBEAT LITE
 
 목표:
 - CMS 첫 화면 503 완화

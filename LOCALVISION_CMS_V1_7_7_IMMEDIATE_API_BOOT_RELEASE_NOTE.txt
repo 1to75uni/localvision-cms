@@ -1,4 +1,4 @@
-LocalVision CMS v1.8.1 Immediate API Boot
+LocalVision CMS v1.8.2 Immediate API Boot
 
 목표:
 - CMS 페이지를 클릭/접속하면 API가 즉시 1회 호출되어야 한다.

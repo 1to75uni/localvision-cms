@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.1 CORS SAFE + UI POLISH guard
+// LocalVision CMS v1.8.2 CORS SAFE + UI POLISH guard
 // 목적: CMS 첫 접속/운영 중 Cloudflare Functions, D1, R2, 브라우저 캐시의 순간 지연으로
 //       서버 연결 전 상태가 오래 유지되는 문제를 줄입니다.
 (function () {

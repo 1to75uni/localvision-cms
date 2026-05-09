@@ -103,7 +103,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.8.1-api-diet-heartbeat-lite',
+    version: 'v1.8.2-api-diet-heartbeat-lite',
     mode: env.MEDIA ? 'D1 + R2 auto sync' : 'D1 only - MEDIA binding missing',
     bindings: {
       DB: Boolean(env.DB),
