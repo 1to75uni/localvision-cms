@@ -1,4 +1,4 @@
-import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -172,10 +172,21 @@ export async function onRequestPost({ request, env }) {
     snapshot = { ok: false, reason: String(error?.message || error) }
   }
 
+  const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
     key,
     content,
     snapshot,
+    contentReflect: {
+      side,
+      store,
+      playlistVersion: snapDoc.playlistVersion || '',
+      counts: snapDoc.counts || {},
+      tvExpectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      tvExpectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      message: `업로드 완료. TV 반영 예상: 최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      rightSource: side === 'right' ? '_common/right' : undefined,
+    },
   })
 }

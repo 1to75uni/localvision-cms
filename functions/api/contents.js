@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -106,7 +106,22 @@ export async function onRequestPost({ request, env }) {
   try { snapshot = content.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, content.store) }
   catch (error) { snapshot = { ok: false, reason: String(error?.message || error) } }
 
-  return json({ ok: true, content, snapshot })
+  const snapDoc = snapshot?.snapshot || snapshot || {}
+  return json({
+    ok: true,
+    content,
+    snapshot,
+    contentReflect: {
+      side: content.side,
+      store: content.store,
+      playlistVersion: snapDoc.playlistVersion || '',
+      counts: snapDoc.counts || {},
+      tvExpectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      tvExpectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      message: `콘텐츠 저장 완료. TV 반영 예상: 최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      rightSource: content.store === '_common' ? '_common/right' : undefined,
+    },
+  })
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -160,9 +175,20 @@ export async function onRequestDelete({ request, env }) {
   try { snapshot = row.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, row.store) }
   catch (error) { snapshot = { ok: false, reason: String(error?.message || error) } }
 
+  const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
     snapshot,
+    contentReflect: {
+      side: row.side,
+      store: row.store,
+      playlistVersion: snapDoc.playlistVersion || '',
+      counts: snapDoc.counts || {},
+      tvExpectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      tvExpectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      message: `콘텐츠 삭제 완료. TV 반영 예상: 최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      rightSource: row.store === '_common' ? '_common/right' : undefined,
+    },
     deleted: id,
     dbDeleted: Boolean(result?.success ?? true),
     r2Deleted,

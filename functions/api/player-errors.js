@@ -153,15 +153,12 @@ export async function onRequestGet({ request, env }) {
   return json({ ok: true, serverNowUtc: nowUtcIso(), serverNowKst: nowKstString(), errors: (results || []).map(normalizeError) })
 }
 
-export async function onRequestPost({ request, env }) {
-  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureTable(env)
-
-  const body = await readBody(request)
+async function saveOneError(env, raw = {}, inherited = {}) {
+  const body = { ...inherited, ...raw }
   const errorCode = String(body.errorCode || '').trim()
   const message = String(body.message || '').trim()
   if (!errorCode || !message) {
-    return json({ ok: false, error: 'errorCode and message are required' }, 400)
+    return { ok: false, skipped: true, error: 'errorCode and message are required' }
   }
 
   const now = nowUtcIso()
@@ -209,7 +206,7 @@ export async function onRequestPost({ request, env }) {
       item.updatedAt,
       existing.id
     ).run()
-    return json({ ok: true, mode: 'merged', error: { ...item, id: existing.id, count: Number(existing.count || 1) + 1, fingerprint, createdAtKst: toKstString(item.createdAt), updatedAtKst: toKstString(item.updatedAt) } })
+    return { ok: true, mode: 'merged', error: { ...item, id: existing.id, count: Number(existing.count || 1) + 1, fingerprint, createdAtKst: toKstString(item.createdAt), updatedAtKst: toKstString(item.updatedAt) } }
   }
 
   await env.DB.prepare(`
@@ -231,7 +228,43 @@ export async function onRequestPost({ request, env }) {
     fingerprint
   ).run()
 
-  return json({ ok: true, mode: 'inserted', error: { ...item, count: 1, fingerprint, createdAtKst: toKstString(item.createdAt), updatedAtKst: toKstString(item.updatedAt) } })
+  return { ok: true, mode: 'inserted', error: { ...item, count: 1, fingerprint, createdAtKst: toKstString(item.createdAt), updatedAtKst: toKstString(item.updatedAt) } }
+}
+
+export async function onRequestPost({ request, env }) {
+  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureTable(env)
+
+  const body = await readBody(request)
+  const batch = Array.isArray(body.errors) ? body.errors : (Array.isArray(body.items) ? body.items : null)
+
+  if (batch) {
+    const inherited = {
+      store: body.store,
+      deviceId: body.deviceId,
+      href: body.href,
+      userAgent: body.userAgent,
+    }
+    const limited = batch.slice(0, 50)
+    const results = []
+    for (const entry of limited) {
+      results.push(await saveOneError(env, entry, inherited))
+    }
+    return json({
+      ok: true,
+      mode: 'batch',
+      received: batch.length,
+      saved: results.filter((r) => r.ok).length,
+      skipped: results.filter((r) => !r.ok).length,
+      results,
+      serverNowUtc: nowUtcIso(),
+      serverNowKst: nowKstString(),
+    })
+  }
+
+  const result = await saveOneError(env, body)
+  if (!result.ok) return json({ ok: false, error: result.error || 'errorCode and message are required' }, 400)
+  return json({ ok: true, mode: result.mode, error: result.error })
 }
 
 export async function onRequestDelete({ request, env }) {

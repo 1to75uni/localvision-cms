@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.8.2 API DIET static build: snapshot + offline-first API; dist refreshed.');
+console.log('LocalVision CMS v1.8.3 CONTENT SYNC FIELD LOG static build: dist refreshed.');

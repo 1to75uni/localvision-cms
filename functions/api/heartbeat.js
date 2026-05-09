@@ -22,7 +22,7 @@ function safeStoreDeviceId(store = '') {
 }
 
 function makePlayerAppLabel(body = {}) {
-  const version = String(body.playerVersion || body.source || 'v1.7.2-field-log-fix').trim()
+  const version = String(body.playerVersion || body.source || 'v1.7.3-content-sync-field-log').trim()
   const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
   const play = body.playStatus ? ` · ${body.playStatus}` : ''
   return `Player ${version}${appShell}${play}`.slice(0, 240)

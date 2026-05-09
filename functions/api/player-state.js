@@ -39,7 +39,7 @@ function safeStoreDeviceId(store = '') {
 }
 
 function makePlayerAppLabel(body = {}) {
-  const version = String(body.playerVersion || 'v1.7.2-field-log-fix').trim()
+  const version = String(body.playerVersion || 'v1.7.3-content-sync-field-log').trim()
   const appShell = body.appShell ? ` · APP Shell${body.appVersion ? ` ${body.appVersion}` : ''}` : ''
   const play = body.playStatus ? ` · ${body.playStatus}` : ''
   return `Player ${version}${appShell}${play}`.slice(0, 240)
@@ -101,6 +101,14 @@ function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null)
   const light = {
     playlistVersion: snapshot.playlistVersion || '',
     counts: snapshot.counts || {},
+    contentReflect: {
+      expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      expectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      leftCount: Number(snapshot?.counts?.left || 0),
+      rightCount: Number(snapshot?.counts?.right || 0),
+      rightSource: '_common/right',
+      note: 'Player는 다음 statePoll 확인 때 최신 재생목록을 적용합니다.',
+    },
     notice: notice ? [notice.id, notice.updatedAt, notice.startAt, notice.endAt, notice.repeatMode] : null,
     command: devices?.map((d) => [d.store, d.lastCommand, d.commandAt]) || [],
     app: appConfig ? [appConfig.appId, appConfig.playerUrl, appConfig.active, appConfig.playerUrlUpdatedAt] : null,
@@ -226,6 +234,25 @@ export async function onRequestGet({ request, env }) {
     }
   }
 
+  // v1.8.3 핵심 보완:
+  // TV가 꺼졌다 켜지거나 8분 주기로 /api/player-state를 확인할 때
+  // R2에 저장된 예전 bundle snapshot만 믿지 않고, D1의 최신 left + 최신 _common/right를 다시 합쳐서 내려줍니다.
+  // 특히 오른쪽 공통 콘텐츠는 모든 매장이 공유하므로, 매장별 bundle이 낡아도 항상 최신 _common/right가 반영됩니다.
+  try {
+    const liveSnapshot = await makePlaylistSnapshot(request, env, resolvedStore)
+    if (liveSnapshot?.playlists) {
+      snapshot = {
+        ...snapshot,
+        ...liveSnapshot,
+        sourceSnapshot: source,
+        mode: 'playlist-snapshot-live-merged',
+      }
+      source = `${source}+d1-live-content-sync`
+    }
+  } catch (error) {
+    diagnostics.push(`liveContentSync: ${safeErrorMessage(error)}`)
+  }
+
   const deviceRows = await env.DB.prepare(`
     SELECT id, store, name, role, online, last_seen AS lastSeen, app, device_code AS deviceCode,
            last_command AS lastCommand, command_at AS commandAt, updated_at AS updatedAt
@@ -281,10 +308,18 @@ export async function onRequestGet({ request, env }) {
     playlistUrls: {
       bundle: playlistSnapshotUrl(request, env, resolvedStore, 'bundle'),
       left: playlistSnapshotUrl(request, env, resolvedStore, 'left'),
-      right: playlistSnapshotUrl(request, env, resolvedStore, 'right'),
+      right: playlistSnapshotUrl(request, env, '_common', 'right'),
     },
     playlists: snapshot.playlists || { left: [], right: [] },
     counts: snapshot.counts || {},
+    contentReflect: {
+      expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      expectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
+      leftCount: Number(snapshot?.counts?.left || 0),
+      rightCount: Number(snapshot?.counts?.right || 0),
+      rightSource: '_common/right',
+      note: 'Player는 다음 statePoll 확인 때 최신 재생목록을 적용합니다.',
+    },
     noticeVersion: notice ? `${notice.id}:${notice.updatedAt || ''}` : '',
     commandVersion: command ? `${command.command}:${command.commandAt || ''}` : '',
     serverNowUtc: now,

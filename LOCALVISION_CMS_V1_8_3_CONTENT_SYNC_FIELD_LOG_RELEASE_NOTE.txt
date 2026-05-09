@@ -1,0 +1,18 @@
+LocalVision CMS v1.8.3 CONTENT SYNC FIELD LOG
+
+반영 내용
+1. /api/player-state가 매 호출마다 D1 최신 left + 최신 _common/right를 다시 합쳐 응답합니다.
+   - 오른쪽 공통 콘텐츠가 매장별 예전 bundle snapshot에 묶여 늦게 반영되는 문제를 줄였습니다.
+2. heartbeat D1 기록 기본 정책을 10분에서 5분으로 조정했습니다.
+   - heartbeat=5분 / onlineTTL=10분 구조에서 CMS 오프라인 오판 가능성을 줄입니다.
+3. /api/player-errors가 단일 로그와 batch 로그를 모두 받을 수 있게 보완했습니다.
+   - Player가 CMS 연결 실패 시 localStorage에 보관한 로그를 나중에 묶어서 재전송할 수 있습니다.
+4. 업로드/콘텐츠 저장/삭제 응답에 TV 반영 예상 시간(contentReflect)을 포함했습니다.
+   - 기본 statePoll=480000ms 기준 최대 8분.
+5. CMS가 생성하는 Player URL 기본값에 restart=09:30/restartMode=reload/restartJitterSec=0을 확실히 포함합니다.
+
+제외한 내용
+- 문제 미디어 6시간 격리 기능은 의도적으로 넣지 않았습니다.
+- 기존 세션 임시 제외 기능은 유지됩니다.
+
+APP 수정 없음.

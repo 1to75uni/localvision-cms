@@ -155,13 +155,13 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.2-api-diet-heartbeat-lite'
+export const LV_CORE_VERSION = 'v1.8.3-content-sync-field-log'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
 export const DEFAULT_NOTICE_POLL_MS = 60000
 export const DEFAULT_CONTENT_CHECK_MS = 480000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 300
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
 export const DEFAULT_PLAYER_STATE_POLL_MS = 480000
 
@@ -271,8 +271,11 @@ function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
   if (!url.searchParams.has('videoMode')) url.searchParams.set('videoMode', 'cache')
   if (!url.searchParams.has('cacheVia')) url.searchParams.set('cacheVia', 'api')
   if (!url.searchParams.has('activateWhenCached')) url.searchParams.set('activateWhenCached', '1')
-  // Player v1.7.2 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
+  // Player v1.7.3 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
   if (!url.searchParams.has('snapshotFetch')) url.searchParams.set('snapshotFetch', '0')
+  if (!url.searchParams.has('restart')) url.searchParams.set('restart', '09:30')
+  if (!url.searchParams.has('restartMode')) url.searchParams.set('restartMode', 'reload')
+  if (!url.searchParams.has('restartJitterSec')) url.searchParams.set('restartJitterSec', '0')
   if (!url.searchParams.has('fit')) url.searchParams.set('fit', 'cover')
   return url
 }
@@ -868,7 +871,7 @@ export async function makePlaylistSnapshot(request, env, store = '') {
     playlistUrls: {
       bundle: playlistSnapshotUrl(request, env, cleanStore, 'bundle'),
       left: playlistSnapshotUrl(request, env, cleanStore, 'left'),
-      right: playlistSnapshotUrl(request, env, cleanStore, 'right'),
+      right: playlistSnapshotUrl(request, env, '_common', 'right'),
     },
     counts: { left: left.length, right: right.length },
     updatedAt: now,

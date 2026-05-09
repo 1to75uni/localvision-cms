@@ -14,7 +14,7 @@ export async function onRequestGet({ request, env }) {
 
   if (env.DB) {
     try {
-      // v1.8.2: 기본 health는 가벼운 SELECT 1만 실행합니다.
+      // v1.8.3: 기본 health는 가벼운 SELECT 1만 실행합니다.
       // 스키마 보정/마이그레이션은 /api/health?deep=1 또는 /api/repair에서만 실행합니다.
       if (deep) await ensureCoreSchema(env)
       const probe = await env.DB.prepare('SELECT 1 AS ok').first()
@@ -55,7 +55,7 @@ export async function onRequestGet({ request, env }) {
     noticePollMs: DEFAULT_NOTICE_POLL_MS,
     serverNowUtc: nowUtcIso(),
     serverNowKst: nowKstString(),
-    heartbeatWritePolicy: 'heartbeat-d1-write-every-10-min-or-status-change',
+    heartbeatWritePolicy: 'heartbeat-d1-write-every-5-min-or-status-change',
     r2SampleCount,
     checks,
   }, dbOk ? 200 : 500)

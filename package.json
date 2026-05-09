@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-1-api-diet",
-  "version": "1.8.2-api-diet-heartbeat-lite",
+  "name": "localvision-cms-v1-8-3-content-sync-field-log",
+  "version": "1.8.3-content-sync-field-log",
   "private": true,
-  "description": "LocalVision CMS v1.8.2: API diet, lightweight heartbeat, reduced D1 calls, offline-first playlist snapshots.",
+  "description": "LocalVision CMS v1.8.3: content sync, latest common right merge, field log batch queue support, 5-min D1 heartbeat write policy.",
   "scripts": {
     "build": "node build-static.js"
   },

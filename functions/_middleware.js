@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.2 API Diet + Heartbeat Lite
+// LocalVision CMS v1.8.3 Content Sync + Field Log
 // 모든 /api/* 요청에서 CORS preflight와 예외 응답을 안전하게 처리합니다.
 import { corsHeaders } from './_lib/localvision-core.js'
 
@@ -22,7 +22,7 @@ export async function onRequest(context) {
       ok: false,
       error: error?.message || 'Unhandled CMS API error',
       endpoint: new URL(context.request.url).pathname,
-      version: 'v1.8.2-api-diet-heartbeat-lite',
+      version: 'v1.8.3-content-sync-field-log',
     }, null, 2), {
       status: 500,
       headers: {
