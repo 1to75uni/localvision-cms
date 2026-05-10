@@ -1,0 +1,38 @@
+LocalVision CMS v1.8.4 API DEFENSIVE STABILITY
+
+기준 파일:
+- 이전 기준: LocalVision_CMS_v1.8.3_CONTENT_SYNC_FIELD_LOG_NO_QUARANTINE_FINAL.zip
+- 이번 기준: LocalVision_CMS_v1.8.4_API_DEFENSIVE_STABILITY_FINAL.zip
+
+핵심 목적:
+- CMS 전체 서버는 정상인데 일부 보조 API(player-errors, screenshots, app-config, playlist)가 503을 내며 CMS 전체 장애처럼 보이던 문제를 방어 처리.
+- D1/R2 삭제, schema 전체 재실행, APP 수정 없이 CMS Functions와 CMS API 배너 판단 로직만 안정화.
+
+반영 내용:
+1. /api/player-errors
+   - player_errors 테이블/컬럼/인덱스 보강 실패 시에도 503 대신 errors: [] + diagnostics 반환.
+   - 로그 저장 실패 시에도 가능한 범위에서 degraded 응답 반환.
+
+2. /api/screenshots
+   - store/deviceId 누락 시 D1/R2를 건드리기 전 즉시 400 반환.
+   - 스크린샷이 없거나 R2 fallback이 실패해도 503 대신 screenshot: null 반환.
+
+3. /api/app-config
+   - id 누락은 400, 매칭 없음은 404로 명확화.
+   - D1 컬럼/스키마 혼선 시 fallback 조회와 diagnostics 제공.
+   - APP ID 연결 API가 내부 예외로 쉽게 503을 내지 않도록 방어.
+
+4. /api/playlist
+   - R2 snapshot 읽기/쓰기 실패해도 D1 live fallback으로 playlist payload 반환.
+   - 잘못된 콘텐츠 항목은 제외하고, duration 누락은 기본 20초 적용.
+   - 마지막 fallback에서도 빈 playlists 구조를 200으로 반환.
+
+5. CMS 프론트 배너
+   - /api/ping, /api/health, /api/stores, /api/devices, /api/contents, /api/notices만 서버 전체 상태 판단 기준으로 사용.
+   - player-errors/screenshots/app-config/playlist 같은 보조 API 실패는 서버 전체 장애로 표시하지 않음.
+
+운영 원칙:
+- Player v1.7.3은 유지.
+- APP 수정 없음.
+- D1/R2 데이터 삭제 없음.
+- 기존 API 응답 형태와 Player 호환성 유지.

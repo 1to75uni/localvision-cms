@@ -30,7 +30,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.8.3-content-sync-field-log',
+    version: 'v1.8.4-api-defensive-stability',
     message: 'D1/R2 repair completed. Contents and devices are now store-canonicalized.',
     r2Sync,
     syntheticCleanup,

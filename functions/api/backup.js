@@ -103,7 +103,7 @@ export async function onRequestGet({ request, env }) {
 
   return json({
     ok: true,
-    version: 'v1.8.3-content-sync-field-log',
+    version: 'v1.8.4-api-defensive-stability',
     mode: env.MEDIA ? 'D1 + R2 auto sync' : 'D1 only - MEDIA binding missing',
     bindings: {
       DB: Boolean(env.DB),

@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-3-content-sync-field-log",
-  "version": "1.8.3-content-sync-field-log",
+  "name": "localvision-cms-v1-8-4-api-defensive-stability",
+  "version": "1.8.4-api-defensive-stability",
   "private": true,
-  "description": "LocalVision CMS v1.8.3: content sync, latest common right merge, field log batch queue support, 5-min D1 heartbeat write policy.",
+  "description": "LocalVision CMS v1.8.4: defensive API stability for player-errors, screenshots, app-config and playlist.",
   "scripts": {
     "build": "node build-static.js"
   },

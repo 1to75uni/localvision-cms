@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.3 API DIET guard
+// LocalVision CMS v1.8.4 API Defensive Stability guard
 // 목표: CMS 페이지를 여는 즉시 API를 1회 호출하고, 이후 호출은 CMS 화면/정해진 주기에 맡깁니다.
 // 원칙: fetch 응답을 60초씩 붙잡아 화면을 멈추게 하지 않습니다. 실패 감지는 빠르게, 재연결 감지는 백그라운드로 처리합니다.
 (function () {
@@ -24,6 +24,25 @@
 
   function methodOf(init) {
     return String((init && init.method) || 'GET').toUpperCase();
+  }
+
+  function apiPathOf(input) {
+    var u = toUrlObject(input);
+    return u ? u.pathname : '';
+  }
+
+  function isCoreServerApi(path) {
+    return path === '/api/ping' || path === '/api/health' || path === '/api/stores' || path === '/api/devices' || path === '/api/contents' || path === '/api/notices';
+  }
+
+  function isAuxApi(path) {
+    return path === '/api/player-errors' || path === '/api/screenshots' || path === '/api/app-config' || path === '/api/playlist' || path === '/api/player-config' || path === '/api/backup';
+  }
+
+  function warnAuxApi(path, status) {
+    if (!isAuxApi(path)) return;
+    setBanner('checking', '서버는 확인 중입니다. 일부 기능 API 응답 확인 필요 · ' + path + ' · HTTP ' + status + ' · ' + nowText());
+    setTimeout(function () { if (lastState === 'checking') setBanner('idle', ''); }, 3500);
   }
 
   function toUrlObject(input) {
@@ -159,7 +178,18 @@
         } catch (_) {}
       }
 
-      if (res.status >= 500) startReconnectLoop('HTTP ' + res.status);
+      if (res.status >= 500) {
+        var path = apiPathOf(input);
+        if (isCoreServerApi(path)) {
+          startReconnectLoop('HTTP ' + res.status);
+        } else {
+          warnAuxApi(path, res.status);
+          // 보조 API 장애는 서버 전체 장애로 보지 않습니다. 실제 서버 상태는 /api/ping이 판단합니다.
+          pingOnce().then(function (ok) {
+            if (!ok) startReconnectLoop('ping 실패');
+          });
+        }
+      }
       return res;
     } catch (error) {
       var fallback2 = currentOriginFallback(input);
@@ -172,7 +202,15 @@
           }
         } catch (_) {}
       }
-      startReconnectLoop(error && error.message);
+      var path2 = apiPathOf(input);
+      if (isCoreServerApi(path2)) {
+        startReconnectLoop(error && error.message);
+      } else {
+        warnAuxApi(path2, 'fetch');
+        pingOnce().then(function (ok) {
+          if (!ok) startReconnectLoop('ping 실패');
+        });
+      }
       throw error;
     }
   };

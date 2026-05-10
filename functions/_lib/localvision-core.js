@@ -155,7 +155,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.3-content-sync-field-log'
+export const LV_CORE_VERSION = 'v1.8.4-api-defensive-stability'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
