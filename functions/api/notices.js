@@ -1,16 +1,6 @@
-import { ensureCoreSchema, normalizeNoticeTime, toKstString, nowUtcIso, r2KeyFromUrl } from '../_lib/localvision-core.js'
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
-      'access-control-allow-headers': 'content-type,range,cache-control,pragma,authorization,x-lv-admin-token',
-      'cache-control': 'no-store',
-    },
-  })
-}
+import { ensureCoreSchema, normalizeNoticeTime, toKstString, nowUtcIso, r2KeyFromUrl, json as coreJson, safeErrorMessage } from '../_lib/localvision-core.js'
+
+function json(data, status = 200) { return coreJson(data, status) }
 
 export async function onRequestOptions() { return json({ ok: true }) }
 async function readBody(request) { try { return await request.json() } catch { return {} } }
@@ -26,9 +16,18 @@ function cleanStore(value = '') {
   return String(value).toLowerCase().trim().replaceAll(' ', '-').replace(/[^a-z0-9-_]/g, '')
 }
 
-function mapNotice(row) {
+function isWithinNoticeWindow(row, now = nowUtcIso()) {
+  const enabled = Boolean(row.isActive)
+  const startAt = String(row.startAt || '')
+  const endAt = String(row.endAt || '')
+  return enabled && (!startAt || startAt <= now) && (!endAt || endAt >= now)
+}
+
+function mapNotice(row, now = nowUtcIso()) {
   const startAt = row.startAt || ''
   const endAt = row.endAt || ''
+  const enabled = Boolean(row.isActive)
+  const currentlyActive = isWithinNoticeWindow(row, now)
   return {
     id: row.id,
     store: row.store,
@@ -51,7 +50,12 @@ function mapNotice(row) {
     durationSec: Number(row.durationSec || 15),
     repeatMode: row.repeatMode || 'once',
     repeatIntervalMin: Number(row.repeatIntervalMin ?? row.repeat_interval_min ?? 0),
-    isActive: Boolean(row.isActive),
+    // 기존 필드명은 유지하되, 이제 CMS 목록에서는 실제 시간 기준 송출 여부를 의미합니다.
+    isActive: currentlyActive,
+    currentlyActive,
+    isCurrentlyActive: currentlyActive,
+    enabled,
+    scheduleState: !enabled ? 'disabled' : (currentlyActive ? 'active-now' : (startAt && startAt > now ? 'scheduled' : 'expired')),
     createdAt: row.createdAt || '',
     createdAtKst: row.createdAt ? toKstString(row.createdAt) : '',
     updatedAt: row.updatedAt || '',
@@ -66,49 +70,54 @@ async function ensureTable(env) {
 }
 
 export async function onRequestGet({ request, env }) {
-  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureTable(env)
+  if (!env.DB) return json({ ok: true, degraded: true, notices: [], diagnostics: ['D1 binding DB is missing'] })
 
+  const diagnostics = []
   const url = new URL(request.url)
   const store = cleanStore(url.searchParams.get('store') || '')
   const activeOnly = url.searchParams.get('active') === '1' || url.searchParams.get('active') === 'true'
   const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') || 50)))
   const now = nowUtcIso()
 
-  const where = []
-  const params = []
-  if (store) { where.push('(store = ? OR store = "_all")'); params.push(store) }
-  if (activeOnly) {
-    where.push('is_active = 1')
-    where.push('(start_at = "" OR start_at <= ?)')
-    where.push('(end_at = "" OR end_at >= ?)')
-    params.push(now, now)
+  try {
+    // GET은 화면 조회 전용입니다. 스키마 보강은 POST/DELETE 또는 /api/repair가 담당합니다.
+    const where = []
+    const params = []
+    if (store) { where.push('(store = ? OR store = "_all")'); params.push(store) }
+    if (activeOnly) {
+      where.push('is_active = 1')
+      where.push('(start_at = "" OR start_at <= ?)')
+      where.push('(end_at = "" OR end_at >= ?)')
+      params.push(now, now)
+    }
+
+    let sql = `
+      SELECT
+        id, store, title, type, message,
+        media_url AS mediaUrl,
+        link_url AS linkUrl,
+        file_name AS fileName,
+        r2_key AS r2Key,
+        start_at AS startAt,
+        end_at AS endAt,
+        timezone,
+        display_mode AS displayMode,
+        priority, duration_sec AS durationSec, repeat_mode AS repeatMode, repeat_interval_min AS repeatIntervalMin,
+        is_active AS isActive,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM notices
+    `
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`
+    sql += ` ORDER BY CASE priority WHEN 'urgent' THEN 0 ELSE 1 END, updated_at DESC LIMIT ?`
+    params.push(limit)
+
+    const { results } = await env.DB.prepare(sql).bind(...params).all()
+    const notices = (results || []).map((row) => mapNotice(row, now))
+    return json({ ok: true, serverNowUtc: now, serverNowKst: toKstString(now), notices, active: activeOnly ? notices[0] || null : undefined, diagnostics })
+  } catch (error) {
+    return json({ ok: true, degraded: true, serverNowUtc: now, serverNowKst: toKstString(now), notices: [], active: activeOnly ? null : undefined, diagnostics: [...diagnostics, safeErrorMessage(error)] })
   }
-
-  let sql = `
-    SELECT
-      id, store, title, type, message,
-      media_url AS mediaUrl,
-      link_url AS linkUrl,
-      file_name AS fileName,
-      r2_key AS r2Key,
-      start_at AS startAt,
-      end_at AS endAt,
-      timezone,
-      display_mode AS displayMode,
-      priority, duration_sec AS durationSec, repeat_mode AS repeatMode, repeat_interval_min AS repeatIntervalMin,
-      is_active AS isActive,
-      created_at AS createdAt,
-      updated_at AS updatedAt
-    FROM notices
-  `
-  if (where.length) sql += ` WHERE ${where.join(' AND ')}`
-  sql += ` ORDER BY CASE priority WHEN 'urgent' THEN 0 ELSE 1 END, updated_at DESC LIMIT ?`
-  params.push(limit)
-
-  const { results } = await env.DB.prepare(sql).bind(...params).all()
-  const notices = (results || []).map(mapNotice)
-  return json({ ok: true, serverNowUtc: now, serverNowKst: toKstString(now), notices, active: activeOnly ? notices[0] || null : undefined })
 }
 
 export async function onRequestPost({ request, env }) {
@@ -144,7 +153,7 @@ export async function onRequestPost({ request, env }) {
     durationSec: Number(body.durationSec || 15),
     repeatMode: String(body.repeatMode || 'once'),
     repeatIntervalMin: Number(body.repeatIntervalMin || body.repeat_interval_min || 0),
-    isActive: toBool(body.isActive, true) ? 1 : 0,
+    isActive: toBool(body.isActive ?? body.enabled, true) ? 1 : 0,
     updatedAt: nowUtcIso(),
   }
 
@@ -159,7 +168,7 @@ export async function onRequestPost({ request, env }) {
     notice.durationSec, notice.repeatMode, notice.repeatIntervalMin, notice.isActive, notice.updatedAt
   ).run()
 
-  return json({ ok: true, notice: mapNotice({ ...notice, isActive: Boolean(notice.isActive), createdAt: '', updatedAt: notice.updatedAt }) })
+  return json({ ok: true, notice: mapNotice({ ...notice, isActive: Boolean(notice.isActive), createdAt: '', updatedAt: notice.updatedAt }, notice.updatedAt) })
 }
 
 export async function onRequestPatch({ request, env }) { return onRequestPost({ request, env }) }

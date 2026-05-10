@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.4 API Defensive Stability guard
+// LocalVision CMS v1.8.5 API Defensive Stability guard
 // 목표: CMS 페이지를 여는 즉시 API를 1회 호출하고, 이후 호출은 CMS 화면/정해진 주기에 맡깁니다.
 // 원칙: fetch 응답을 60초씩 붙잡아 화면을 멈추게 하지 않습니다. 실패 감지는 빠르게, 재연결 감지는 백그라운드로 처리합니다.
 (function () {

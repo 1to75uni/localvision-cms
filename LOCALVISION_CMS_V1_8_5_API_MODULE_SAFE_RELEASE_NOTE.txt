@@ -1,0 +1,16 @@
+LocalVision CMS v1.8.5 API MODULE SAFE RELEASE NOTE
+
+기준 파일: LocalVision_CMS_v1.8.5_API_MODULE_SAFE_FINAL.zip
+
+핵심 보강:
+1. /api/player-errors GET 경량화: 스키마 보강/인덱스 생성 없이 단순 조회만 수행. 실패해도 503 대신 200 + degraded + errors: [] 반환.
+2. /api/screenshots GET 경량화: 기본 조회는 D1 최신 스크린샷만 확인. R2 탐색은 fallback=1일 때만 실행.
+3. /api/backup 안전화: 기본 호출은 readonly lite 모드. R2 scan/중복정리/schema repair는 deep=1 또는 /api/repair에서만 실행.
+4. /api/notices 활성 상태 보강: enabled(사용 여부)와 currentlyActive(현재 시간 기준 실제 송출 여부)를 분리. 종료된 공지가 isActive=true처럼 보이던 혼선을 줄임.
+5. store slug 오타 방어: sinhanja/sininja처럼 유사 slug가 있을 때 player-errors/screenshots에서 storeSuggestions와 후보 조회를 제공.
+6. /api/health lite 모드에서 r2SampleCount=0으로 오해하지 않도록 r2SampleMode를 표시.
+
+운영 원칙:
+- 서버 연결 상태는 /api/ping, /api/health 기준으로 판단.
+- 오류로그/스크린샷/백업 실패는 서버 전체 장애로 보지 않음.
+- APP/Player 수정 없이 CMS만 교체 가능.

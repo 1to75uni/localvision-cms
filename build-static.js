@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.8.4 API DEFENSIVE STABILITY static build: dist refreshed.');
+console.log('LocalVision CMS v1.8.5 API MODULE SAFE static build: dist refreshed.');

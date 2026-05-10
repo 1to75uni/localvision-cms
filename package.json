@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-4-api-defensive-stability",
-  "version": "1.8.4-api-defensive-stability",
+  "name": "localvision-cms-v1-8-5-api-module-safe",
+  "version": "1.8.5-api-module-safe",
   "private": true,
-  "description": "LocalVision CMS v1.8.4: defensive API stability for player-errors, screenshots, app-config and playlist.",
+  "description": "LocalVision CMS v1.8.5: API module safe stabilization for player-errors, screenshots, app-config and playlist.",
   "scripts": {
     "build": "node build-static.js"
   },

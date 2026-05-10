@@ -1,4 +1,4 @@
-// LocalVision CMS v1.8.4 API Defensive Stability
+// LocalVision CMS v1.8.5 API Module Safe
 // 모든 /api/* 요청에서 CORS preflight와 예외 응답을 안전하게 처리합니다.
 import { corsHeaders } from './_lib/localvision-core.js'
 
@@ -22,7 +22,7 @@ export async function onRequest(context) {
       ok: false,
       error: error?.message || 'Unhandled CMS API error',
       endpoint: new URL(context.request.url).pathname,
-      version: 'v1.8.4-api-defensive-stability',
+      version: 'v1.8.5-api-module-safe',
     }, null, 2), {
       status: 500,
       headers: {

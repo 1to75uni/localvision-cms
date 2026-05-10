@@ -56,7 +56,8 @@ export async function onRequestGet({ request, env }) {
     serverNowUtc: nowUtcIso(),
     serverNowKst: nowKstString(),
     heartbeatWritePolicy: 'heartbeat-d1-write-every-5-min-or-status-change',
-    r2SampleCount,
+    r2SampleCount: deep ? r2SampleCount : null,
+    r2SampleMode: deep ? 'checked' : 'skipped-in-lite-use-deep=1',
     checks,
   }, dbOk ? 200 : 500)
 }
