@@ -5,7 +5,7 @@ $store = "sininja"
 $paths = @(
   "/api/ping",
   "/api/health",
-  "/assets/lv-right-targets-v191.js",
+  "/assets/lv-right-targets-v192.js",
   "/api/health?deep=1",
   "/api/devices",
   "/api/stores",

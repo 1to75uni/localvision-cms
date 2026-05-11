@@ -289,7 +289,7 @@ export async function onRequestDelete({ request, env }) {
   const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
-    version: 'v1.9.1-visibility-click-fast-version-clean',
+    version: 'v1.9.2-visibility-button-modal-fix',
     snapshot,
     contentReflect: {
       side: row.side,

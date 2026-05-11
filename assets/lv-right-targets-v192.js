@@ -69,13 +69,15 @@
   };
 
   var originalFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (originalFetch && !window.__LV_RIGHT_TARGETS_FETCH_PATCHED_V191__) {
-    window.__LV_RIGHT_TARGETS_FETCH_PATCHED_V191__ = true;
+  if (originalFetch && !window.__LV_RIGHT_TARGETS_FETCH_PATCHED_V192__) {
+    window.__LV_RIGHT_TARGETS_FETCH_PATCHED_V192__ = true;
     window.fetch = function (input, init) {
       init = init || {};
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var method = String(init.method || 'GET').toUpperCase();
+      var isUpload = /\/api\/upload(?:\?|$)/.test(url);
+      var isContentWrite = /\/api\/contents(?:\?|$)/.test(url) && method !== 'GET';
       try {
-        var url = typeof input === 'string' ? input : (input && input.url) || '';
-        var isUpload = /\/api\/upload(?:\?|$)/.test(url);
         if (isUpload && init.body && typeof FormData !== 'undefined' && init.body instanceof FormData) {
           var side = String(init.body.get('side') || '').toLowerCase();
           if (side === 'right') {
@@ -94,8 +96,34 @@
       } catch (error) {
         return Promise.reject(error);
       }
-      return originalFetch(input, init);
+      var promise = originalFetch(input, init);
+      if (isUpload || isContentWrite) {
+        promise.then(function () {
+          scheduleContentRefresh('fetch-write:' + (isUpload ? 'upload' : 'contents'));
+        }).catch(function () {});
+      }
+      return promise;
     };
+  }
+
+
+  var contentRefreshTimer = null;
+  function scheduleContentRefresh(reason) {
+    if (contentRefreshTimer) clearTimeout(contentRefreshTimer);
+    contentRefreshTimer = setTimeout(function () {
+      contentRefreshTimer = null;
+      state.contentsLoaded = false;
+      state.contentsLoadError = '';
+      log('schedule content refresh', reason || 'unknown');
+      Promise.resolve(loadContents(true)).then(function () {
+        decorateRightContentCards(true);
+        decorateVisibleRightCardsFallback(true);
+        scheduleTick();
+      }).catch(function () {
+        decorateVisibleRightCardsFallback(true);
+        scheduleTick();
+      });
+    }, 650);
   }
 
   async function loadStores(force) {
@@ -212,6 +240,7 @@
     } finally {
       state.contentsLoading = false;
       decorateRightContentCards(true);
+      decorateVisibleRightCardsFallback(true);
     }
   }
 
@@ -243,6 +272,7 @@
       await Promise.all([loadStores(force), loadContents(force), loadDevices(force)]);
     } catch (_) {}
     decorateRightContentCards(true);
+    decorateVisibleRightCardsFallback(true);
   }
 
   function getStoreMap() {
@@ -318,6 +348,10 @@
       if (!el || !el.querySelector || el.id === 'root' || isInsideNavigation(el) || el.closest('#lv-right-target-panel') || el.closest('#lv-right-visibility-modal')) continue;
       var txt = textOf(el);
       if (!txt || txt.length > 1400) continue;
+      // 업로드 폼 안에는 방금 입력한 파일명/right_9 같은 텍스트가 있어서
+      // 콘텐츠 카드로 오인될 수 있습니다. 송출 매장 보기 버튼은 실제 콘텐츠 카드에만 붙입니다.
+      if (txt.indexOf('새 콘텐츠 추가') >= 0 || txt.indexOf('파일 업로드 + 콘텐츠 저장') >= 0 || txt.indexOf('파일명 직접 입력') >= 0 || txt.indexOf('콘텐츠 제목') >= 0) continue;
+      if (el.querySelector && (el.querySelector('input[type="file"]') || el.querySelector('select'))) continue;
       var titleHit = title && txt.indexOf(title) >= 0;
       var fileHit = fileName && txt.indexOf(fileName) >= 0;
       var keyHit = r2Key && txt.indexOf(r2Key) >= 0;
@@ -358,8 +392,14 @@
     btn.setAttribute('data-lv-visibility-file', String(content.fileName || content.file_name || ''));
     btn.setAttribute('data-lv-visibility-r2', String(content.r2Key || content.r2_key || ''));
     btn.setAttribute('aria-label', '송출 매장 보기');
+    btn.addEventListener('click', function (ev) {
+      if (handleVisibilityTriggerEvent(ev, btn)) handleVisibilityButtonClick(btn);
+    });
+    btn.addEventListener('pointerdown', function (ev) {
+      if (handleVisibilityTriggerEvent(ev, btn)) handleVisibilityButtonClick(btn);
+    });
     // v1.9.2: 버튼은 항상 즉시 클릭 가능하게 둡니다.
-    // 데이터는 클릭 후 모달 안에서 로딩합니다. React 재렌더링으로 이벤트가 풀리는 문제는 document 위임 클릭으로 처리합니다.
+    // 데이터는 클릭 후 모달 안에서 로딩합니다. React 재렌더링/캡처 충돌을 막기 위해 직접 이벤트 + document 위임을 같이 둡니다.
     wrap.appendChild(pill);
     wrap.appendChild(btn);
     return wrap;
@@ -383,6 +423,88 @@
       decorated += 1;
     });
     if (decorated) log('visibility buttons decorated', decorated);
+  }
+
+
+  function isUploadLikeBlock(el) {
+    if (!el) return false;
+    var txt = textOf(el);
+    if (txt.indexOf('새 콘텐츠 추가') >= 0 || txt.indexOf('파일 업로드 + 콘텐츠 저장') >= 0 || txt.indexOf('파일명 직접 입력') >= 0 || txt.indexOf('콘텐츠 제목') >= 0) return true;
+    if (el.querySelector && (el.querySelector('input[type="file"]') || el.querySelector('select'))) return true;
+    return false;
+  }
+
+  function cleanupVisibilityControlsInUploadForm() {
+    Array.from(document.querySelectorAll('.lv-right-visibility-card-tools')).forEach(function (tools) {
+      var block = tools.closest('article, section, .form-card, .content-card, .card, div');
+      if (isUploadLikeBlock(block) || tools.closest('#lv-right-target-panel')) tools.remove();
+    });
+  }
+
+  function uniqueRightNames(txt) {
+    var seen = {};
+    var re = /right[\s_-]*\d+/ig;
+    var m;
+    while ((m = re.exec(txt))) {
+      var key = m[0].toLowerCase().replace(/[\s-]+/g, '_');
+      seen[key] = true;
+    }
+    return Object.keys(seen);
+  }
+
+  function inferRightContentFromCard(card) {
+    var txt = textOf(card);
+    var names = uniqueRightNames(txt);
+    if (!names.length) return null;
+    var title = names[0];
+    var known = state.contents.find(function (content) {
+      var t = String(content.title || '').toLowerCase();
+      var f = String(content.fileName || content.file_name || '').toLowerCase();
+      return t === title || f.indexOf(title) >= 0 || txt.indexOf(content.fileName || content.file_name || '') >= 0;
+    });
+    if (known) return known;
+    return {
+      id: 'visible_' + title,
+      title: title,
+      fileName: '',
+      r2Key: 'stores/_common/right',
+      targetMode: 'all',
+      targetStores: []
+    };
+  }
+
+  function decorateVisibleRightCardsFallback(force) {
+    if (!isContentPageLike()) return;
+    cleanupVisibilityControlsInUploadForm();
+    var nodes = Array.from(document.querySelectorAll('main article, main section, main .content-card, main .content-row, main .card, main div'));
+    var decorated = 0;
+    nodes.forEach(function (el) {
+      if (!el || !el.querySelector || el.id === 'root' || isInsideNavigation(el) || el.closest('#lv-right-target-panel') || el.closest('#lv-right-visibility-modal')) return;
+      if (isUploadLikeBlock(el)) return;
+      if (el.querySelector('[data-lv-visibility-for]') && !force) return;
+      var txt = textOf(el);
+      if (!txt || txt.length < 30 || txt.length > 900) return;
+      if (txt.indexOf('stores/_common/right') < 0 && txt.indexOf('공통 우측') < 0 && txt.indexOf('우측 30') < 0) return;
+      if (txt.indexOf('미디어 열기') < 0 && txt.indexOf('저장 위치') < 0) return;
+      var names = uniqueRightNames(txt);
+      if (names.length !== 1) return;
+      // 부모/큰 컨테이너가 아니라 가장 작은 콘텐츠 카드에만 붙입니다.
+      var childWithSame = Array.from(el.children || []).some(function (child) {
+        var childTxt = textOf(child);
+        return childTxt && childTxt !== txt && childTxt.indexOf(names[0]) >= 0 && (childTxt.indexOf('미디어 열기') >= 0 || childTxt.indexOf('저장 위치') >= 0);
+      });
+      if (childWithSame) return;
+      var content = inferRightContentFromCard(el);
+      if (!content) return;
+      var existing = el.querySelector('[data-lv-visibility-for]');
+      if (existing) existing.remove();
+      var controls = makeVisibilityControls(content);
+      var mediaLink = Array.from(el.querySelectorAll('a,button')).find(function (node) { return textOf(node).indexOf('미디어') >= 0; });
+      if (mediaLink && mediaLink.parentElement) mediaLink.parentElement.insertBefore(controls, mediaLink.nextSibling);
+      else el.appendChild(controls);
+      decorated += 1;
+    });
+    if (decorated) log('visibility buttons fallback decorated', decorated);
   }
 
   function findContentForVisibilityButton(btn) {
@@ -447,6 +569,23 @@
     box.querySelector('.lv-modal-close').addEventListener('click', closeVisibilityModal);
   }
 
+
+  function handleVisibilityTriggerEvent(ev, btn) {
+    if (!btn) return false;
+    try {
+      if (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+      }
+    } catch (_) {}
+    var now = Date.now();
+    var last = Number(btn.getAttribute('data-lv-last-open-at') || '0');
+    if (now - last < 500) return false;
+    btn.setAttribute('data-lv-last-open-at', String(now));
+    return true;
+  }
+
   function handleVisibilityButtonClick(btn) {
     var content = findContentForVisibilityButton(btn);
     openVisibilityLoadingModal(content);
@@ -465,16 +604,16 @@
   }
 
   function installDelegatedVisibilityClick() {
-    if (window.__LV_RIGHT_VISIBILITY_DELEGATED_CLICK_V191__) return;
-    window.__LV_RIGHT_VISIBILITY_DELEGATED_CLICK_V191__ = true;
-    document.addEventListener('click', function (ev) {
-      var target = ev.target;
-      var btn = target && target.closest ? target.closest('.lv-right-visibility-btn') : null;
-      if (!btn) return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      handleVisibilityButtonClick(btn);
-    }, true);
+    if (window.__LV_RIGHT_VISIBILITY_DELEGATED_CLICK_V192__) return;
+    window.__LV_RIGHT_VISIBILITY_DELEGATED_CLICK_V192__ = true;
+    ['pointerdown', 'click'].forEach(function (eventName) {
+      document.addEventListener(eventName, function (ev) {
+        var target = ev.target;
+        var btn = target && target.closest ? target.closest('.lv-right-visibility-btn') : null;
+        if (!btn) return;
+        if (handleVisibilityTriggerEvent(ev, btn)) handleVisibilityButtonClick(btn);
+      }, true);
+    });
   }
 
   function openVisibilityModal(content) {
@@ -771,9 +910,9 @@
   }
 
   function installCss() {
-    if (document.getElementById('lv-right-target-style-v191')) return;
+    if (document.getElementById('lv-right-target-style-v192')) return;
     var style = document.createElement('style');
-    style.id = 'lv-right-target-style-v191';
+    style.id = 'lv-right-target-style-v192';
     style.textContent = `
       #lv-right-target-panel.lv-right-target-panel{grid-column:1/-1;width:100%;box-sizing:border-box;margin:10px 0 8px;padding:16px;border:2px solid rgba(37,99,235,.35);background:linear-gradient(180deg,#f8fbff,#eff6ff);border-radius:18px;box-shadow:0 10px 24px rgba(15,23,42,.08);position:relative;z-index:2}
       #lv-right-target-panel .lv-target-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px}
@@ -831,8 +970,8 @@
   function bindSideChange() {
     var card = findContentCard();
     var select = findSideSelect(card);
-    if (select && !select.dataset.lvTargetBoundV191) {
-      select.dataset.lvTargetBoundV191 = '1';
+    if (select && !select.dataset.lvTargetBoundV192) {
+      select.dataset.lvTargetBoundV192 = '1';
       select.addEventListener('change', function () {
         setTimeout(function () {
           renderPanel(true);
@@ -855,6 +994,7 @@
     if (card && isRightSelected(card)) loadStores(false);
     loadVisibilityData(false);
     decorateRightContentCards(false);
+    decorateVisibleRightCardsFallback(false);
   }
 
   var tickTimer = null;

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var VERSION = 'v1.9.1-visibility-click-fast-version-clean';
+  var VERSION = 'v1.9.2-visibility-button-modal-fix';
   var state = {
     stores: [],
     contents: [],
@@ -358,7 +358,7 @@
     btn.setAttribute('data-lv-visibility-file', String(content.fileName || content.file_name || ''));
     btn.setAttribute('data-lv-visibility-r2', String(content.r2Key || content.r2_key || ''));
     btn.setAttribute('aria-label', '송출 매장 보기');
-    // v1.9.1: 버튼은 항상 즉시 클릭 가능하게 둡니다.
+    // v1.9.2: 버튼은 항상 즉시 클릭 가능하게 둡니다.
     // 데이터는 클릭 후 모달 안에서 로딩합니다. React 재렌더링으로 이벤트가 풀리는 문제는 document 위임 클릭으로 처리합니다.
     wrap.appendChild(pill);
     wrap.appendChild(btn);
@@ -823,7 +823,7 @@
     var badge = document.createElement('div');
     badge.id = 'lv-right-target-loaded-badge';
     badge.className = 'lv-right-target-loaded-badge';
-    badge.textContent = 'Right Target UI v1.9.1 로드됨';
+    badge.textContent = 'Right Target UI v1.9.2 로드됨';
     document.body.appendChild(badge);
     setTimeout(function () { try { badge.style.display = 'none'; } catch (_) {} }, 6000);
   }

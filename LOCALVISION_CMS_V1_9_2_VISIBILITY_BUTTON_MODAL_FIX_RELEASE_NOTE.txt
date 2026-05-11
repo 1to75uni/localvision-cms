@@ -1,0 +1,29 @@
+LocalVision CMS v1.9.2 VISIBILITY BUTTON + MODAL FIX
+
+기준 파일: LocalVision_CMS_v1.9.2_VISIBILITY_BUTTON_MODAL_FIX_FINAL.zip
+
+핵심 수정:
+1. right 콘텐츠 카드의 [송출 매장 보기] 버튼이 클릭해도 모달이 안 뜨던 문제 보강
+   - 버튼 직접 click/pointerdown 이벤트 + document 위임 이벤트를 함께 사용
+   - 클릭 즉시 로딩 모달을 열도록 처리
+
+2. 새로 업로드한 right 콘텐츠(right_9 등)에 송출 매장 버튼이 바로 안 붙던 문제 보강
+   - /api/upload 성공 후 right 콘텐츠 목록을 자동 새로고침
+   - React 화면 재렌더링 후에도 fallback 카드 스캔으로 버튼 자동 보강
+
+3. 업로드 폼에 송출 매장 보기 버튼이 잘못 붙는 문제 방지
+   - 새 콘텐츠 추가 영역/파일 업로드 폼/select/input[type=file] 영역은 콘텐츠 카드 매칭에서 제외
+
+유지 기능:
+- right 콘텐츠 매장 선택 업로드
+- 선택 매장별 playlist 필터링
+- 송출 매장 보기 모달
+- 전체화면 공지 화면에 right 선택 카드가 뜨지 않도록 방어
+- R2 삭제 보강
+- APP/Player 수정 없음
+
+배포 후 확인:
+- /api/health → v1.9.2-visibility-button-modal-fix
+- /assets/lv-right-targets-v192.js → STATUS 200
+- 새 right 업로드 직후 해당 카드에 [송출 매장 보기] 표시
+- [송출 매장 보기] 클릭 즉시 모달 표시
