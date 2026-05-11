@@ -1,0 +1,25 @@
+LocalVision CMS v1.8.6 RIGHT TARGET STORES
+
+목표:
+- right 공통 콘텐츠 업로드 시 전체 매장/특정 매장 노출 선택 기능 추가.
+- 기본값은 전체 매장 노출이므로 기존 right 콘텐츠는 계속 전체 송출.
+- APP 수정 없이 CMS/API/Player playlist 응답만으로 매장별 필터링.
+
+핵심 변경:
+1. contents 테이블 보강
+   - target_mode TEXT DEFAULT 'all'
+   - target_stores_json TEXT DEFAULT '[]'
+2. /api/upload, /api/contents
+   - right 콘텐츠 저장 시 targetMode, targetStores 수신/저장.
+3. /api/playlist, /api/player-state
+   - store 기준으로 right 콘텐츠를 필터링.
+   - target_mode='all' 또는 값 없음: 모든 매장 노출.
+   - target_mode='selected': target_stores_json에 포함된 store에만 노출.
+4. CMS 화면 보조 스크립트
+   - 콘텐츠 관리 > 우측 30% 선택 시 매장 체크박스 패널 표시.
+   - 전체 선택 / 전체 해제 / 운영중만 선택 / 검색 제공.
+
+주의:
+- APP은 수정하지 않습니다.
+- 기존 콘텐츠는 target_mode가 없거나 all로 처리되어 사라지지 않습니다.
+- 선택 매장이 0곳인 상태의 selected 저장은 프론트에서 차단합니다.

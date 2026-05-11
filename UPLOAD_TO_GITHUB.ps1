@@ -18,7 +18,7 @@ Copy-Item "$src\*" $work -Recurse -Force
 Write-Host "[5/6] commit"
 Set-Location $work
 git add -A
-git commit -m "Deploy CMS v1.8.5 API module safe"
+git commit -m "Deploy CMS v1.8.6 right target stores"
 
 Write-Host "[6/6] push"
 git push origin main

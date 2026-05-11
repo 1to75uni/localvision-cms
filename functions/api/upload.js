@@ -1,4 +1,4 @@
-import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromForm } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -112,6 +112,7 @@ export async function onRequestPost({ request, env }) {
   }
 
   const type = detectType(file)
+  const target = contentTargetFromForm(form, side)
   const folder = side === 'right' ? 'stores/_common/right' : `stores/${store}/left`
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
   const fileName = `${stamp}-${safeFileName(file.name)}`
@@ -144,12 +145,15 @@ export async function onRequestPost({ request, env }) {
     sortOrder: Date.now(),
     updatedAt: new Date().toISOString(),
     r2Key: key,
+    targetMode: target.targetMode,
+    targetStores: target.targetStores,
+    targetStoresJson: target.targetStoresJson,
   }
 
   await env.DB.prepare(`
     INSERT INTO contents
-    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     content.id,
     content.store,
@@ -162,7 +166,9 @@ export async function onRequestPost({ request, env }) {
     content.url,
     content.sortOrder,
     content.updatedAt,
-    content.r2Key
+    content.r2Key,
+    content.targetMode,
+    content.targetStoresJson
   ).run()
 
   let snapshot = null
@@ -187,6 +193,9 @@ export async function onRequestPost({ request, env }) {
       tvExpectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
       message: `업로드 완료. TV 반영 예상: 최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
       rightSource: side === 'right' ? '_common/right' : undefined,
+      targetMode: content.targetMode,
+      targetStores: content.targetStores,
+      targetCount: content.targetStores.length,
     },
   })
 }

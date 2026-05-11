@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromBody, parseTargetStores, normalizeTargetMode } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -34,13 +34,16 @@ function mapContent(row = {}) {
     sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0),
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     r2Key: row.r2Key ?? row.r2_key ?? r2KeyFromUrl(row.url || ''),
+    targetMode: normalizeTargetMode(row.targetMode ?? row.target_mode, row.targetStoresJson ?? row.target_stores_json ?? ''),
+    targetStores: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? ''),
+    targetCount: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? '').length,
   }
 }
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  // v1.8.2: 콘텐츠 목록 조회는 schema repair/중복정리 없이 가볍게 실행합니다.
-  // 중복 정리는 /api/repair에서 수동 실행합니다.
+  // v1.8.6: right 콘텐츠 노출대상 컬럼이 없던 기존 D1도 깨지지 않도록 1회 보강합니다.
+  await ensureCoreSchema(env)
   const url = new URL(request.url)
   const store = url.searchParams.get('store')
   const side = url.searchParams.get('side')
@@ -52,7 +55,9 @@ export async function onRequestGet({ request, env }) {
       url,
       sort_order AS sortOrder,
       updated_at AS updatedAt,
-      r2_key AS r2Key
+      r2_key AS r2Key,
+      target_mode AS targetMode,
+      target_stores_json AS targetStoresJson
     FROM contents
   `
   const params = []
@@ -91,15 +96,19 @@ export async function onRequestPost({ request, env }) {
     updatedAt: body.updatedAt || new Date().toISOString(),
     r2Key: String(body.r2Key || body.r2_key || r2KeyFromUrl(body.url || '')).trim(),
   }
+  const target = contentTargetFromBody(body, content.side)
+  content.targetMode = target.targetMode
+  content.targetStores = target.targetStores
+  content.targetStoresJson = target.targetStoresJson
 
   await env.DB.prepare(`
     INSERT OR REPLACE INTO contents
-    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     content.id, content.store, content.side, content.type, content.title,
     content.duration, content.status, content.fileName, content.url,
-    content.sortOrder, content.updatedAt, content.r2Key
+    content.sortOrder, content.updatedAt, content.r2Key, content.targetMode, content.targetStoresJson
   ).run()
 
   let snapshot = null
@@ -120,6 +129,64 @@ export async function onRequestPost({ request, env }) {
       tvExpectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
       message: `콘텐츠 저장 완료. TV 반영 예상: 최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
       rightSource: content.store === '_common' ? '_common/right' : undefined,
+    },
+  })
+}
+
+
+export async function onRequestPatch({ request, env }) {
+  if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
+  await ensureCoreSchema(env)
+  const url = new URL(request.url)
+  const body = await readBody(request)
+  const id = String(body.id || url.searchParams.get('id') || '').trim()
+  if (!id) return json({ ok: false, error: 'id is required' }, 400)
+
+  const current = await env.DB.prepare(`
+    SELECT id, store, side, type, title, duration, status, file_name AS fileName, url,
+           sort_order AS sortOrder, updated_at AS updatedAt, r2_key AS r2Key,
+           target_mode AS targetMode, target_stores_json AS targetStoresJson
+    FROM contents
+    WHERE id = ?
+    LIMIT 1
+  `).bind(id).first()
+  if (!current) return json({ ok: false, error: 'content not found', id }, 404)
+
+  const side = String(body.side || current.side || '').trim()
+  const target = contentTargetFromBody(body, side)
+  const next = {
+    title: body.title !== undefined ? String(body.title || '').trim() : current.title,
+    duration: body.duration !== undefined ? Number(body.duration) || DEFAULT_CONTENT_DURATION : Number(current.duration || DEFAULT_CONTENT_DURATION),
+    status: body.status !== undefined ? String(body.status || '사용중').trim() : current.status,
+    sortOrder: body.sortOrder !== undefined || body.sort_order !== undefined ? Number(body.sortOrder ?? body.sort_order) || 0 : Number(current.sortOrder || 0),
+    targetMode: target.targetMode,
+    targetStoresJson: target.targetStoresJson,
+    updatedAt: new Date().toISOString(),
+  }
+
+  await env.DB.prepare(`
+    UPDATE contents
+    SET title = ?, duration = ?, status = ?, sort_order = ?, target_mode = ?, target_stores_json = ?, updated_at = ?
+    WHERE id = ?
+  `).bind(next.title, next.duration, next.status, next.sortOrder, next.targetMode, next.targetStoresJson, next.updatedAt, id).run()
+
+  let snapshot = null
+  try { snapshot = current.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, current.store) }
+  catch (error) { snapshot = { ok: false, reason: String(error?.message || error) } }
+
+  return json({
+    ok: true,
+    content: mapContent({ ...current, ...next, targetStoresJson: next.targetStoresJson }),
+    snapshot,
+    contentReflect: {
+      side: current.side,
+      store: current.store,
+      targetMode: next.targetMode,
+      targetStores: parseTargetStores(next.targetStoresJson),
+      targetCount: parseTargetStores(next.targetStoresJson).length,
+      message: next.targetMode === 'selected'
+        ? `노출 매장 ${parseTargetStores(next.targetStoresJson).length}곳으로 저장되었습니다.`
+        : '전체 매장 노출로 저장되었습니다.',
     },
   })
 }

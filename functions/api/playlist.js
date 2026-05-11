@@ -25,8 +25,8 @@ function sanitizeItems(items = []) {
     }))
 }
 
-async function safeReadItems(env, store, side, diagnostics = []) {
-  try { return sanitizeItems(await readContentsForPlaylist(env, store, side)) }
+async function safeReadItems(env, store, side, diagnostics = [], viewerStore = '') {
+  try { return sanitizeItems(await readContentsForPlaylist(env, store, side, viewerStore)) }
   catch (error) { diagnostics.push(`readContents ${store}/${side}: ${safeErrorMessage(error)}`); return [] }
 }
 
@@ -57,6 +57,7 @@ export async function onRequestGet({ request, env }) {
   const store = url.searchParams.get('store') || ''
   const side = url.searchParams.get('side') || 'left'
   const forceRebuild = ['1', 'true', 'yes'].includes(String(url.searchParams.get('rebuild') || '').toLowerCase())
+  const preferSnapshot = ['1', 'true', 'yes'].includes(String(url.searchParams.get('snapshot') || '').toLowerCase())
   const diagnostics = []
 
   if (!['left', 'right', 'bundle'].includes(side)) return json({ ok: false, error: 'side must be left, right, or bundle', endpoint: '/api/playlist' }, 400)
@@ -65,7 +66,9 @@ export async function onRequestGet({ request, env }) {
 
   try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
 
-  if (!forceRebuild && side !== 'right') {
+  // v1.8.6: right 콘텐츠는 매장별 노출대상 필터가 있을 수 있으므로 기본은 D1 live로 정확하게 계산합니다.
+  // snapshot=1을 명시한 진단 요청에서만 R2 bundle snapshot을 우선 사용합니다.
+  if (!forceRebuild && preferSnapshot && side !== 'right') {
     try {
       const snapshot = await readPlaylistSnapshotFromR2(request, env, store)
       if (snapshot?.playlists) {
@@ -76,8 +79,9 @@ export async function onRequestGet({ request, env }) {
     } catch (error) { diagnostics.push(`readSnapshot: ${safeErrorMessage(error)}`) }
   }
 
-  const left = side === 'right' ? [] : await safeReadItems(env, store, 'left', diagnostics)
-  const right = await safeReadItems(env, '_common', 'right', diagnostics)
+  const cleanStore = String(store || '').trim()
+  const left = side === 'right' ? [] : await safeReadItems(env, cleanStore, 'left', diagnostics)
+  const right = await safeReadItems(env, cleanStore || '_common', 'right', diagnostics, cleanStore)
 
   // R2 snapshot 쓰기는 운영 편의 기능입니다. 실패해도 Player/CMS API는 live payload를 반환합니다.
   if (side !== 'right') {

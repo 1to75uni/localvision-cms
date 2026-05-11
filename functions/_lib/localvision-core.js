@@ -32,6 +32,61 @@ export function safeSqlId(value = '') {
 }
 
 
+export function parseTargetStores(value = '') {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((v) => cleanSlug(v)).filter(Boolean))]
+  }
+  const raw = String(value ?? '').trim()
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parseTargetStores(parsed)
+  } catch {}
+  return [...new Set(raw.split(/[ ,\n\t|;]+/).map((v) => cleanSlug(v)).filter(Boolean))]
+}
+
+export function normalizeTargetMode(value = '', stores = []) {
+  const mode = String(value || '').toLowerCase().trim()
+  const list = parseTargetStores(stores)
+  if (mode === 'selected' || mode === 'select' || mode === 'stores') return list.length ? 'selected' : 'all'
+  if (mode === '') return list.length ? 'selected' : 'all'
+  if (mode === 'all' || mode === '전체') return 'all'
+  return list.length ? 'selected' : 'all'
+}
+
+export function contentTargetFromBody(body = {}, side = '') {
+  const rawStores = body.targetStores ?? body.target_stores ?? body.targetStoresJson ?? body.target_stores_json ?? []
+  const stores = parseTargetStores(rawStores)
+  const mode = side === 'right' ? normalizeTargetMode(body.targetMode ?? body.target_mode, stores) : 'all'
+  return {
+    targetMode: mode,
+    targetStores: mode === 'selected' ? stores : [],
+    targetStoresJson: mode === 'selected' ? JSON.stringify(stores) : '[]',
+  }
+}
+
+export function contentTargetFromForm(form, side = '') {
+  const rawStores = form.get('targetStores') ?? form.get('target_stores') ?? form.get('targetStoresJson') ?? form.get('target_stores_json') ?? ''
+  const stores = parseTargetStores(rawStores)
+  const mode = side === 'right' ? normalizeTargetMode(form.get('targetMode') ?? form.get('target_mode'), stores) : 'all'
+  return {
+    targetMode: mode,
+    targetStores: mode === 'selected' ? stores : [],
+    targetStoresJson: mode === 'selected' ? JSON.stringify(stores) : '[]',
+  }
+}
+
+export function isContentAllowedForStore(row = {}, viewerStore = '') {
+  if (String(row.side || '').toLowerCase() !== 'right') return true
+  const mode = normalizeTargetMode(row.targetMode ?? row.target_mode, row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? '')
+  if (mode !== 'selected') return true
+  const targetStores = parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? '')
+  const store = cleanSlug(viewerStore || '')
+  if (!store) return true
+  return targetStores.includes(store)
+}
+
+
 export const KST_OFFSET_MS = 9 * 60 * 60 * 1000
 
 export function toUtcIso(value = new Date()) {
@@ -155,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.5-api-module-safe'
+export const LV_CORE_VERSION = 'v1.8.6-right-target-stores'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -475,7 +530,9 @@ export async function ensureCoreSchema(env) {
       url TEXT DEFAULT '',
       sort_order INTEGER DEFAULT 0,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      r2_key TEXT DEFAULT ''
+      r2_key TEXT DEFAULT '',
+      target_mode TEXT DEFAULT 'all',
+      target_stores_json TEXT DEFAULT '[]'
     )
   `).run()
 
@@ -566,6 +623,8 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'contents', 'sort_order', `INTEGER DEFAULT 0`)
   await addColumnIfMissing(env, 'contents', 'updated_at', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'contents', 'r2_key', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'contents', 'target_mode', `TEXT DEFAULT 'all'`)
+  await addColumnIfMissing(env, 'contents', 'target_stores_json', `TEXT DEFAULT '[]'`)
 
   await addColumnIfMissing(env, 'devices', 'role', `TEXT DEFAULT 'tv'`)
   await addColumnIfMissing(env, 'devices', 'online', `INTEGER DEFAULT 0`)
@@ -610,12 +669,15 @@ export async function ensureCoreSchema(env) {
   await tryRun(env, `UPDATE stores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET duration = 20 WHERE duration IS NULL OR duration = '' OR duration <= 0`)
+  await tryRun(env, `UPDATE contents SET target_mode = 'all' WHERE target_mode IS NULL OR target_mode = ''`)
+  await tryRun(env, `UPDATE contents SET target_stores_json = '[]' WHERE target_stores_json IS NULL OR target_stores_json = ''`)
   await tryRun(env, `UPDATE devices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE devices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE notices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE notices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
 
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_store_side ON contents(store, side)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_right_target ON contents(side, target_mode)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_devices_store ON devices(store)`)
   await tryRun(env, `CREATE UNIQUE INDEX IF NOT EXISTS idx_stores_app_id_unique ON stores(app_id) WHERE app_id IS NOT NULL AND app_id <> ''`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at)`)
@@ -812,22 +874,55 @@ export function normalizeContentForPlayer(row = {}) {
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     updatedAtKst: (row.updatedAt ?? row.updated_at) ? toKstString(row.updatedAt ?? row.updated_at) : '',
     r2Key: row.r2Key ?? row.r2_key ?? r2KeyFromUrl(row.url || ''),
+    targetMode: normalizeTargetMode(row.targetMode ?? row.target_mode, row.targetStoresJson ?? row.target_stores_json ?? ''),
+    targetStores: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? ''),
   }
 }
 
-export async function readContentsForPlaylist(env, store = '', side = 'left') {
+export async function readContentsForPlaylist(env, store = '', side = 'left', viewerStore = '') {
   if (!env.DB) return []
   const targetStore = side === 'right' ? '_common' : cleanSlug(store || '')
+  const viewer = cleanSlug(viewerStore || (side === 'right' && cleanSlug(store || '') !== '_common' ? store : ''))
   if (!targetStore) return []
-  const { results } = await env.DB.prepare(`
-    SELECT id, store, side, type, title, duration, status,
-           file_name AS fileName, url, sort_order AS sortOrder,
-           updated_at AS updatedAt, r2_key AS r2Key
-    FROM contents
-    WHERE store = ? AND side = ? AND status = '사용중'
-    ORDER BY sort_order ASC, updated_at DESC
-  `).bind(targetStore, side).all()
-  return dedupeContentsRows(results || []).map(normalizeContentForPlayer).filter((item) => item.url)
+
+  async function readWithTargetColumns() {
+    return await env.DB.prepare(`
+      SELECT id, store, side, type, title, duration, status,
+             file_name AS fileName, url, sort_order AS sortOrder,
+             updated_at AS updatedAt, r2_key AS r2Key,
+             target_mode AS targetMode, target_stores_json AS targetStoresJson
+      FROM contents
+      WHERE store = ? AND side = ? AND status = '사용중'
+      ORDER BY sort_order ASC, updated_at DESC
+    `).bind(targetStore, side).all()
+  }
+
+  let results = []
+  try {
+    ;({ results } = await readWithTargetColumns())
+  } catch (error) {
+    // v1.8.6 최초 배포 직후 D1에 target 컬럼이 아직 없을 수 있습니다.
+    // 이때 API가 죽지 않도록 schema를 한 번 보강하고, 실패하면 legacy SELECT로 전체 노출 처리합니다.
+    try {
+      await ensureCoreSchema(env)
+      ;({ results } = await readWithTargetColumns())
+    } catch {
+      const legacy = await env.DB.prepare(`
+        SELECT id, store, side, type, title, duration, status,
+               file_name AS fileName, url, sort_order AS sortOrder,
+               updated_at AS updatedAt, r2_key AS r2Key
+        FROM contents
+        WHERE store = ? AND side = ? AND status = '사용중'
+        ORDER BY sort_order ASC, updated_at DESC
+      `).bind(targetStore, side).all()
+      results = legacy.results || []
+    }
+  }
+
+  return dedupeContentsRows(results || [])
+    .filter((row) => isContentAllowedForStore(row, viewer))
+    .map(normalizeContentForPlayer)
+    .filter((item) => item.url)
 }
 
 export async function readStoreBySlugOrId(env, storeOrId = '') {
@@ -857,7 +952,7 @@ function snapshotVersionOf(left = [], right = []) {
 export async function makePlaylistSnapshot(request, env, store = '') {
   const cleanStore = cleanSlug(store || '')
   const left = await readContentsForPlaylist(env, cleanStore, 'left')
-  const right = await readContentsForPlaylist(env, '_common', 'right')
+  const right = await readContentsForPlaylist(env, cleanStore, 'right', cleanStore)
   const now = nowUtcIso()
   const playlistVersion = snapshotVersionOf(left, right)
   return {
@@ -898,7 +993,7 @@ export async function writeJsonToR2(env, key, data) {
 
 
 export async function writeCommonRightSnapshot(request, env) {
-  const right = await readContentsForPlaylist(env, '_common', 'right')
+  const right = await readContentsForPlaylist(env, '_common', 'right', '')
   const now = nowUtcIso()
   const doc = {
     ok: true,
@@ -923,12 +1018,13 @@ export async function writePlaylistSnapshots(request, env, store = '') {
   if (!cleanStore) return { ok: false, reason: 'store is required' }
   const snapshot = await makePlaylistSnapshot(request, env, cleanStore)
   const leftDoc = { ...snapshot, side: 'left', items: snapshot.playlists.left, playlists: { left: snapshot.playlists.left } }
-  const rightDoc = { ...snapshot, store: '_common', side: 'right', items: snapshot.playlists.right, playlists: { right: snapshot.playlists.right } }
   const results = []
   results.push(await writeJsonToR2(env, playlistSnapshotKey(cleanStore, 'bundle'), snapshot))
   results.push(await writeJsonToR2(env, playlistSnapshotKey(cleanStore, 'left'), leftDoc))
-  results.push(await writeJsonToR2(env, playlistSnapshotKey('_common', 'right'), rightDoc))
-  return { ok: results.every((r) => r.ok || r.skipped), store: cleanStore, snapshot, results }
+  // right 콘텐츠는 매장별 노출대상 필터가 적용될 수 있으므로,
+  // store별 bundle에 포함시키고 전역 _common/right snapshot은 항상 전체 목록으로만 따로 갱신합니다.
+  try { results.push((await writeCommonRightSnapshot(request, env)).result) } catch (error) { results.push({ ok: false, reason: safeErrorMessage(error) }) }
+  return { ok: results.every((r) => r?.ok || r?.skipped), store: cleanStore, snapshot, results }
 }
 
 export async function readPlaylistSnapshotFromR2(request, env, store = '') {

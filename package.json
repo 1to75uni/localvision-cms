@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-5-api-module-safe",
-  "version": "1.8.5-api-module-safe",
+  "name": "localvision-cms-v1-8-6-right-target-stores",
+  "version": "1.8.6-right-target-stores",
   "private": true,
-  "description": "LocalVision CMS v1.8.5: API module safe stabilization for player-errors, screenshots, app-config and playlist.",
+  "description": "LocalVision CMS v1.8.6: right common content target store selection with playlist filtering.",
   "scripts": {
     "build": "node build-static.js"
   },

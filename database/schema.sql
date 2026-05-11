@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS contents (
   url TEXT DEFAULT '',
   sort_order INTEGER DEFAULT 0,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  r2_key TEXT DEFAULT ''
+  r2_key TEXT DEFAULT '',
+  target_mode TEXT DEFAULT 'all',
+  target_stores_json TEXT DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS devices (
