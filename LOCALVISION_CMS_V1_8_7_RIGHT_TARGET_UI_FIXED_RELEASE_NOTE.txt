@@ -1,0 +1,17 @@
+LocalVision CMS v1.8.7 RIGHT TARGET UI FIXED
+
+기준 파일: LocalVision_CMS_v1.8.7_RIGHT_TARGET_UI_FIXED_FINAL.zip
+
+핵심 변경:
+1. v1.8.6에서 API/DB/playlist 필터는 정상 반영됐지만 CMS 화면에 right 매장 선택 패널이 보이지 않는 문제를 보강.
+2. assets/lv-right-targets-v187.js 추가. 기존 DOM 구조 추측 방식보다 강하게 콘텐츠 관리 > 새 콘텐츠 추가 카드 내부를 찾아 패널을 삽입.
+3. 노출 위치가 좌측이어도 안내 박스를 표시하고, 우측 30% 선택 시 체크박스 목록을 즉시 활성화.
+4. 전체 선택 / 전체 해제 / 운영중만 선택 / 매장목록 새로고침 / 매장 검색 지원.
+5. 업로드 시 /api/upload FormData에 targetMode, targetStores, targetStoresJson, targetCount를 강제 주입.
+6. 오른쪽 하단에 6초간 Right Target UI v1.8.7 로드됨 배지를 띄워 스크립트 로딩 여부를 현장에서 확인 가능.
+7. API 버전은 v1.8.7-right-target-ui-fixed로 정리. 기존 APP/Player/R2/D1 초기화 없음.
+
+운영 확인:
+- /api/health 에서 version이 v1.8.7-right-target-ui-fixed인지 확인
+- 콘텐츠 관리 화면에서 우측 30% 선택 시 우측 콘텐츠 노출 매장 선택 패널이 보이는지 확인
+- 테스트 right 콘텐츠를 특정 매장만 체크해 업로드한 뒤 선택 매장 playlist에만 포함되는지 확인

@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.8.6 RIGHT TARGET STORES static build: dist refreshed.');
+console.log('LocalVision CMS v1.8.7 RIGHT TARGET UI FIXED static build: dist refreshed.');

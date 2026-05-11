@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-8-6-right-target-stores",
-  "version": "1.8.6-right-target-stores",
+  "name": "localvision-cms-v1-8-7-right-target-stores",
+  "version": "1.8.7-right-target-ui-fixed",
   "private": true,
-  "description": "LocalVision CMS v1.8.6: right common content target store selection with playlist filtering.",
+  "description": "LocalVision CMS v1.8.7: right common content target store selection with playlist filtering.",
   "scripts": {
     "build": "node build-static.js"
   },
