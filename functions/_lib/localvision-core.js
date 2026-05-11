@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.8.8-right-target-visibility'
+export const LV_CORE_VERSION = 'v1.9.0-r2-delete-hardening'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -901,7 +901,7 @@ export async function readContentsForPlaylist(env, store = '', side = 'left', vi
   try {
     ;({ results } = await readWithTargetColumns())
   } catch (error) {
-    // v1.8.8 배포 직후 D1에 target 컬럼이 아직 없을 수 있습니다.
+    // v1.9.0 배포 직후 D1에 target 컬럼이 아직 없을 수 있습니다.
     // 이때 API가 죽지 않도록 schema를 한 번 보강하고, 실패하면 legacy SELECT로 전체 노출 처리합니다.
     try {
       await ensureCoreSchema(env)
