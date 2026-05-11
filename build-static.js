@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v1.9.0 RIGHT TARGET VISIBILITY static build: dist refreshed.');
+console.log('LocalVision CMS v1.9.1 RIGHT TARGET VISIBILITY static build: dist refreshed.');

@@ -1,0 +1,21 @@
+LocalVision CMS v1.9.1 VISIBILITY CLICK FAST + VERSION CLEAN
+
+기준 파일: LocalVision_CMS_v1.9.1_VISIBILITY_CLICK_FAST_VERSION_CLEAN_FINAL.zip
+
+이번 버전 목적:
+1. right 콘텐츠 카드의 [송출 매장 보기] 버튼이 늦게 활성화되는 문제 보완.
+2. 버튼 클릭 즉시 모달을 열고, 모달 내부에서 매장/단말기/콘텐츠 정보를 로딩하는 구조로 변경.
+3. 클릭 이벤트를 버튼 개별 바인딩이 아니라 document 위임 방식으로 처리해 React 재렌더링 이후에도 클릭이 안정적으로 동작하도록 보강.
+4. 화면 내 오래된 버전 문구 정리.
+   - CMS Console v1.9.1
+   - LocalVision CMS v1.9.1
+   - 로그인 하단 CMS v1.9.1
+   - 좌측 현재 단계: CMS v1.9.1
+5. 기존 v1.9.0의 R2 삭제 보강, right 콘텐츠 매장 선택, playlist 필터링 기능 유지.
+
+배포 후 확인:
+- /api/health 에서 version = v1.9.1-visibility-click-fast-version-clean
+- /assets/lv-right-targets-v191.js STATUS 200
+- CMS 화면 좌측/상단/로그인 하단 버전 문구 v1.9.1 표시
+- 콘텐츠 관리에서 [송출 매장 보기] 클릭 시 즉시 모달 표시 후 목록 로딩
+- 전체화면 공지 화면에서는 right 매장 선택 카드가 나오지 않아야 함

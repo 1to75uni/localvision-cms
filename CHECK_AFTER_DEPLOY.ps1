@@ -5,10 +5,12 @@ $store = "sininja"
 $paths = @(
   "/api/ping",
   "/api/health",
+  "/assets/lv-right-targets-v191.js",
   "/api/health?deep=1",
   "/api/devices",
   "/api/stores",
   "/api/contents",
+  "/api/contents?store=_common&side=right",
   "/api/notices",
   "/api/notice-active?store=$store",
   "/api/player-errors?store=$store&limit=20",
