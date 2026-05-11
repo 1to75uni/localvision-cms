@@ -1,0 +1,17 @@
+LocalVision CMS v1.8.8 RIGHT TARGET VISIBILITY
+
+기준 파일: LocalVision_CMS_v1.8.8_RIGHT_TARGET_VISIBILITY_FINAL.zip
+
+핵심 변경:
+1. v1.8.7의 right 콘텐츠 매장 선택 업로드 UI를 유지합니다.
+2. 우측 30% 공통 콘텐츠 카드에 “송출 범위” 배지와 “송출 매장 보기” 버튼을 추가합니다.
+3. 버튼 클릭 시 모달로 해당 콘텐츠가 어떤 매장 playlist에 포함되는지 표시합니다.
+4. 전체 노출 콘텐츠는 전체 매장 목록을 표시하고, 선택 노출 콘텐츠는 targetStores에 저장된 매장만 표시합니다.
+5. /api/stores 및 /api/devices 정보를 합쳐 APP ID, 매장 상태, TV ONLINE/OFFLINE, 마지막 접속 정보를 함께 보여줍니다.
+6. 이 기능은 조회 UI 보강이며 APP/Player/R2/D1 초기화는 필요 없습니다.
+
+확인 기준:
+- /api/health version = v1.8.8-right-target-visibility
+- /assets/lv-right-targets-v188.js = 200
+- CMS 콘텐츠 관리 우측 카드에 “송출 매장 보기” 버튼 표시
+- 버튼 클릭 시 송출 매장 목록 모달 표시

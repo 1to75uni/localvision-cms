@@ -27,7 +27,7 @@ export async function onRequestGet({ request, env }) {
     return json({
       ok: true,
       degraded: true,
-      version: 'v1.8.7-right-target-ui-fixed',
+      version: 'v1.8.8-right-target-visibility',
       endpoint: '/api/backup',
       mode: 'no-db-safe-empty',
       diagnostics: ['D1 binding DB is missing. Pages Functions binding name must be DB.'],
@@ -137,7 +137,7 @@ export async function onRequestGet({ request, env }) {
   return json({
     ok: true,
     degraded: diagnostics.length > 0,
-    version: 'v1.8.7-right-target-ui-fixed',
+    version: 'v1.8.8-right-target-visibility',
     endpoint: '/api/backup',
     mode: deep ? 'deep-manual-repair-sync' : 'lite-safe-readonly',
     note: deep ? 'Schema/R2/cleanup tasks were requested manually.' : 'Default backup is readonly. Use ?deep=1 only for manual repair/sync.',
