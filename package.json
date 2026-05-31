@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
-  "version": "1.9.2-visibility-button-modal-fix",
+  "name": "localvision-cms-v1-9-3-black-mode-final",
+  "version": "1.9.3-black-mode-final",
   "private": true,
-  "description": "LocalVision CMS v1.9.2: right common content target store selection with playlist filtering.",
+  "description": "LocalVision CMS v1.9.3: black/holiday mode with right target store selection.",
   "scripts": {
     "build": "node build-static.js"
   },

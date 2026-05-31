@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.9.2-visibility-button-modal-fix'
+export const LV_CORE_VERSION = 'v1.9.3-black-mode-final'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -290,6 +290,10 @@ export async function findStoreForAppConfig(env, idOrStore = '') {
       plan,
       player_url AS playerUrl,
       player_url_updated_at AS playerUrlUpdatedAt,
+      black_mode AS blackMode,
+      black_mode_until AS blackModeUntil,
+      black_mode_reason AS blackModeReason,
+      black_mode_updated_at AS blackModeUpdatedAt,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM stores
@@ -513,7 +517,11 @@ export async function ensureCoreSchema(env) {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       app_id TEXT DEFAULT '',
       player_url TEXT DEFAULT '',
-      player_url_updated_at TEXT DEFAULT ''
+      player_url_updated_at TEXT DEFAULT '',
+      black_mode INTEGER DEFAULT 0,
+      black_mode_until TEXT DEFAULT '',
+      black_mode_reason TEXT DEFAULT '',
+      black_mode_updated_at TEXT DEFAULT ''
     )
   `).run()
 
@@ -615,6 +623,10 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'stores', 'app_id', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'player_url', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'player_url_updated_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'black_mode', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'stores', 'black_mode_until', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'black_mode_reason', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'stores', 'black_mode_updated_at', `TEXT DEFAULT ''`)
 
   await addColumnIfMissing(env, 'contents', 'duration', `INTEGER DEFAULT 20`)
   await addColumnIfMissing(env, 'contents', 'status', `TEXT DEFAULT '사용중'`)
@@ -934,6 +946,8 @@ export async function readStoreBySlugOrId(env, storeOrId = '') {
   return await env.DB.prepare(`
     SELECT id, app_id AS appId, name, slug, category, address, contact, status, plan,
            player_url AS playerUrl, player_url_updated_at AS playerUrlUpdatedAt,
+           black_mode AS blackMode, black_mode_until AS blackModeUntil,
+           black_mode_reason AS blackModeReason, black_mode_updated_at AS blackModeUpdatedAt,
            created_at AS createdAt, updated_at AS updatedAt
     FROM stores
     WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?
