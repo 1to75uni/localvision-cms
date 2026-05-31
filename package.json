@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-9-3-black-mode-final",
-  "version": "1.9.3-black-mode-final",
+  "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
+  "version": "1.9.2-visibility-button-modal-fix",
   "private": true,
-  "description": "LocalVision CMS v1.9.3: black/holiday mode with right target store selection.",
+  "description": "LocalVision CMS v1.9.5: device control black mode schedule with version UI fix.",
   "scripts": {
     "build": "node build-static.js"
   },

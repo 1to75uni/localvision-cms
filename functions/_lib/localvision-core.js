@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.9.3-black-mode-final'
+export const LV_CORE_VERSION = 'v1.9.5-device-control-black-mode-ui-version-fix'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -290,10 +290,6 @@ export async function findStoreForAppConfig(env, idOrStore = '') {
       plan,
       player_url AS playerUrl,
       player_url_updated_at AS playerUrlUpdatedAt,
-      black_mode AS blackMode,
-      black_mode_until AS blackModeUntil,
-      black_mode_reason AS blackModeReason,
-      black_mode_updated_at AS blackModeUpdatedAt,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM stores
@@ -330,7 +326,7 @@ function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
   if (!url.searchParams.has('videoMode')) url.searchParams.set('videoMode', 'cache')
   if (!url.searchParams.has('cacheVia')) url.searchParams.set('cacheVia', 'api')
   if (!url.searchParams.has('activateWhenCached')) url.searchParams.set('activateWhenCached', '1')
-  // Player v1.7.3 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
+  // Player v1.7.6 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
   if (!url.searchParams.has('snapshotFetch')) url.searchParams.set('snapshotFetch', '0')
   if (!url.searchParams.has('restart')) url.searchParams.set('restart', '09:30')
   if (!url.searchParams.has('restartMode')) url.searchParams.set('restartMode', 'reload')
@@ -517,11 +513,7 @@ export async function ensureCoreSchema(env) {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       app_id TEXT DEFAULT '',
       player_url TEXT DEFAULT '',
-      player_url_updated_at TEXT DEFAULT '',
-      black_mode INTEGER DEFAULT 0,
-      black_mode_until TEXT DEFAULT '',
-      black_mode_reason TEXT DEFAULT '',
-      black_mode_updated_at TEXT DEFAULT ''
+      player_url_updated_at TEXT DEFAULT ''
     )
   `).run()
 
@@ -612,6 +604,21 @@ export async function ensureCoreSchema(env) {
     )
   `).run()
 
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS black_modes (
+      store TEXT PRIMARY KEY,
+      immediate_active INTEGER DEFAULT 0,
+      immediate_until TEXT DEFAULT '',
+      schedule_enabled INTEGER DEFAULT 0,
+      schedule_days_json TEXT DEFAULT '[]',
+      schedule_start TEXT DEFAULT '00:00',
+      schedule_end TEXT DEFAULT '23:59',
+      message TEXT DEFAULT '',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run()
+
   // 기존 Core01/예전 D1 스키마와 섞여 있어도 API가 죽지 않도록 모든 필수 컬럼을 보강합니다.
   await addColumnIfMissing(env, 'stores', 'category', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'address', `TEXT DEFAULT ''`)
@@ -623,10 +630,6 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'stores', 'app_id', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'player_url', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'player_url_updated_at', `TEXT DEFAULT ''`)
-  await addColumnIfMissing(env, 'stores', 'black_mode', `INTEGER DEFAULT 0`)
-  await addColumnIfMissing(env, 'stores', 'black_mode_until', `TEXT DEFAULT ''`)
-  await addColumnIfMissing(env, 'stores', 'black_mode_reason', `TEXT DEFAULT ''`)
-  await addColumnIfMissing(env, 'stores', 'black_mode_updated_at', `TEXT DEFAULT ''`)
 
   await addColumnIfMissing(env, 'contents', 'duration', `INTEGER DEFAULT 20`)
   await addColumnIfMissing(env, 'contents', 'status', `TEXT DEFAULT '사용중'`)
@@ -677,6 +680,16 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'device_screenshots', 'r2_key', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'device_screenshots', 'created_at', `TEXT DEFAULT ''`)
 
+
+  await addColumnIfMissing(env, 'black_modes', 'immediate_active', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'black_modes', 'immediate_until', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'black_modes', 'schedule_enabled', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'black_modes', 'schedule_days_json', `TEXT DEFAULT '[]'`)
+  await addColumnIfMissing(env, 'black_modes', 'schedule_start', `TEXT DEFAULT '00:00'`)
+  await addColumnIfMissing(env, 'black_modes', 'schedule_end', `TEXT DEFAULT '23:59'`)
+  await addColumnIfMissing(env, 'black_modes', 'message', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'black_modes', 'updated_at', `TEXT DEFAULT ''`)
+
   await tryRun(env, `UPDATE stores SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE stores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
@@ -694,6 +707,7 @@ export async function ensureCoreSchema(env) {
   await tryRun(env, `CREATE UNIQUE INDEX IF NOT EXISTS idx_stores_app_id_unique ON stores(app_id) WHERE app_id IS NOT NULL AND app_id <> ''`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_device_screenshots_store_created ON device_screenshots(store, created_at)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_black_modes_updated ON black_modes(updated_at)`)
   await assignMissingAppIds(env)
 }
 
@@ -946,8 +960,6 @@ export async function readStoreBySlugOrId(env, storeOrId = '') {
   return await env.DB.prepare(`
     SELECT id, app_id AS appId, name, slug, category, address, contact, status, plan,
            player_url AS playerUrl, player_url_updated_at AS playerUrlUpdatedAt,
-           black_mode AS blackMode, black_mode_until AS blackModeUntil,
-           black_mode_reason AS blackModeReason, black_mode_updated_at AS blackModeUpdatedAt,
            created_at AS createdAt, updated_at AS updatedAt
     FROM stores
     WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?

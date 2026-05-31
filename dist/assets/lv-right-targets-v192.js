@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var VERSION = 'v1.9.2-visibility-button-modal-fix';
+  var VERSION = 'v1.9.5-device-control-black-mode-ui-version-fix';
   var state = {
     stores: [],
     contents: [],
@@ -962,7 +962,7 @@
     var badge = document.createElement('div');
     badge.id = 'lv-right-target-loaded-badge';
     badge.className = 'lv-right-target-loaded-badge';
-    badge.textContent = 'Right Target UI v1.9.2 로드됨';
+    badge.textContent = 'Right Target UI v1.9.5 로드됨';
     document.body.appendChild(badge);
     setTimeout(function () { try { badge.style.display = 'none'; } catch (_) {} }, 6000);
   }

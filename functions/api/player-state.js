@@ -97,59 +97,10 @@ function appConfigResponse(request, env, store) {
   }
 }
 
-
-function computeBlackMode(row = {}) {
-  const enabled = Number(row.blackMode ?? row.black_mode ?? 0) === 1
-  const until = String(row.blackModeUntil ?? row.black_mode_until ?? '').trim()
-  let active = enabled
-  if (enabled && until) {
-    const ms = Date.parse(until)
-    if (ms && ms < Date.now()) active = false
-  }
-  return {
-    enabled: active,
-    rawEnabled: enabled,
-    until,
-    untilUtc: until,
-    untilKst: until ? toKstString(until) : '',
-    reason: row.blackModeReason ?? row.black_mode_reason ?? '',
-    updatedAt: row.blackModeUpdatedAt ?? row.black_mode_updated_at ?? '',
-    updatedAtKst: (row.blackModeUpdatedAt ?? row.black_mode_updated_at) ? toKstString(row.blackModeUpdatedAt ?? row.black_mode_updated_at) : '',
-  }
-}
-
-async function readBlackModeState(env, store = '') {
-  try {
-    const row = await env.DB.prepare(`
-      SELECT id, slug, black_mode AS blackMode, black_mode_until AS blackModeUntil,
-             black_mode_reason AS blackModeReason, black_mode_updated_at AS blackModeUpdatedAt
-      FROM stores
-      WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?
-      LIMIT 1
-    `).bind(store, store, store).first()
-    if (!row) return computeBlackMode({})
-    const state = computeBlackMode(row)
-    if (state.rawEnabled && !state.enabled) {
-      try {
-        await env.DB.prepare(`
-          UPDATE stores
-          SET black_mode = 0, black_mode_reason = '', black_mode_updated_at = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(nowUtcIso(), row.id).run()
-      } catch {}
-    }
-    return state
-  } catch (error) {
-    return { enabled: false, rawEnabled: false, until: '', untilUtc: '', untilKst: '', reason: '', updatedAt: '', updatedAtKst: '', unavailable: true }
-  }
-}
-
-function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null, blackMode = null) {
+function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null) {
   const light = {
     playlistVersion: snapshot.playlistVersion || '',
     counts: snapshot.counts || {},
-    blackMode,
-    displayMode: blackMode.enabled ? 'black' : 'normal',
     contentReflect: {
       expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
       expectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
@@ -161,7 +112,6 @@ function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null,
     notice: notice ? [notice.id, notice.updatedAt, notice.startAt, notice.endAt, notice.repeatMode] : null,
     command: devices?.map((d) => [d.store, d.lastCommand, d.commandAt]) || [],
     app: appConfig ? [appConfig.appId, appConfig.playerUrl, appConfig.active, appConfig.playerUrlUpdatedAt] : null,
-    blackMode: blackMode ? [blackMode.enabled, blackMode.until, blackMode.updatedAt] : null,
   }
   let hash = 0
   const text = JSON.stringify(light)
@@ -341,8 +291,7 @@ export async function onRequestGet({ request, env }) {
   } catch (error) { diagnostics.push(`notice: ${safeErrorMessage(error)}`) }
 
   const appConfig = appConfigResponse(request, env, store || { slug: resolvedStore, name: resolvedStore, status: '운영중' })
-  const blackMode = await readBlackModeState(env, resolvedStore)
-  const version = versionOf(snapshot, notice, devices, appConfig, blackMode)
+  const version = versionOf(snapshot, notice, devices, appConfig)
   const now = nowUtcIso()
 
   return json({
@@ -363,8 +312,6 @@ export async function onRequestGet({ request, env }) {
     },
     playlists: snapshot.playlists || { left: [], right: [] },
     counts: snapshot.counts || {},
-    blackMode,
-    displayMode: blackMode.enabled ? 'black' : 'normal',
     contentReflect: {
       expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
       expectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,

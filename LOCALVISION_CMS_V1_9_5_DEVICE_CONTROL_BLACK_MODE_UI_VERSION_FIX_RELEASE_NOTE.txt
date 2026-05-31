@@ -1,0 +1,20 @@
+LocalVision CMS v1.9.5 DEVICE CONTROL BLACK MODE + UI VERSION FIX FINAL
+
+기준: 사용자가 올린 CMS v1.9.2 흐름 유지.
+
+반영 내용
+1. 대시보드 > 단말기 상태 > TV 카드 클릭 > 하단 Device Control Panel 안에 휴무모드/블랙모드 패널 표시.
+2. 선택한 업체(store)의 TV 화면만 블랙모드 적용.
+3. 즉시 휴무: 기본 오늘 23:59 KST 자동 해제.
+4. 정기 휴무 스케줄: 요일/시작시간/종료시간 저장.
+5. /api/black-mode API 추가.
+6. Player는 60초마다 확인해 검은 오버레이 적용.
+7. CMS UI 버전 표기 버그 수정: 좌측 상단, 좌측 하단 현재 단계, 상단 제목, 로그인 하단, title 등 v1.9.5로 통일.
+8. APP 수정 없음.
+
+배포 후 테스트
+- /api/health 확인
+- 단말기 상태에서 TV 카드 클릭
+- Device Control Panel의 휴무모드 설정 확인
+- 즉시 휴무 ON 후 Player가 60초 이내 검은 화면으로 전환되는지 확인
+- 해제 후 60초 이내 정상 복귀 확인

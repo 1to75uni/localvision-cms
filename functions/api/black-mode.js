@@ -1,156 +1,217 @@
-import { ensureCoreSchema, json, cleanSlug, LV_CORE_VERSION, nowUtcIso, nowKstString, toKstString } from '../_lib/localvision-core.js'
+import { json, cleanSlug, nowUtcIso, nowKstString, toKstString } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() { return json({ ok: true }) }
 
 async function readBody(request) { try { return await request.json() } catch { return {} } }
 
-function truthy(value) {
-  if (typeof value === 'boolean') return value
-  const text = String(value ?? '').trim().toLowerCase()
-  return ['1', 'true', 'yes', 'on', 'y', '휴무', 'black', 'blackmode'].includes(text)
+async function ensureBlackModeSchema(env) {
+  if (!env.DB) throw new Error('D1 binding DB is missing')
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS black_modes (
+      store TEXT PRIMARY KEY,
+      immediate_active INTEGER DEFAULT 0,
+      immediate_until TEXT DEFAULT '',
+      schedule_enabled INTEGER DEFAULT 0,
+      schedule_days_json TEXT DEFAULT '[]',
+      schedule_start TEXT DEFAULT '00:00',
+      schedule_end TEXT DEFAULT '23:59',
+      message TEXT DEFAULT '',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run()
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_black_modes_updated ON black_modes(updated_at)`).run()
 }
 
-function todayEndKstUtcIso() {
-  const now = new Date()
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
-  const y = kst.getUTCFullYear()
-  const m = kst.getUTCMonth()
-  const d = kst.getUTCDate()
-  return new Date(Date.UTC(y, m, d, 23 - 9, 59, 0, 0)).toISOString()
+function pad2(n) { return String(n).padStart(2, '0') }
+
+function kstParts(date = new Date()) {
+  const kst = new Date(date.getTime() + 9 * 60 * 60 * 1000)
+  return {
+    day: kst.getUTCDay(),
+    hhmm: `${pad2(kst.getUTCHours())}:${pad2(kst.getUTCMinutes())}`,
+    ymd: `${kst.getUTCFullYear()}-${pad2(kst.getUTCMonth() + 1)}-${pad2(kst.getUTCDate())}`,
+  }
 }
 
-function normalizeUntil(value = '') {
+function endOfTodayKstUtcIso() {
+  const p = kstParts(new Date())
+  // KST YYYY-MM-DD 23:59:59 -> UTC ISO
+  const [yyyy, mm, dd] = p.ymd.split('-').map(Number)
+  return new Date(Date.UTC(yyyy, mm - 1, dd, 14, 59, 59)).toISOString()
+}
+
+function localKstToUtcIso(value = '') {
   const raw = String(value || '').trim()
-  if (!raw) return todayEndKstUtcIso()
+  if (!raw) return ''
   if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
     const d = new Date(raw)
-    return Number.isNaN(d.getTime()) ? todayEndKstUtcIso() : d.toISOString()
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString()
   }
   const m = raw.match(/^(\d{4})[-.](\d{1,2})[-.](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
-  if (m) {
-    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 23) - 9, Number(m[5] || 59), Number(m[6] || 0))).toISOString()
+  if (!m) {
+    const d = new Date(raw)
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString()
   }
-  const d = new Date(raw)
-  return Number.isNaN(d.getTime()) ? todayEndKstUtcIso() : d.toISOString()
+  const yyyy = Number(m[1])
+  const mo = Number(m[2]) - 1
+  const dd = Number(m[3])
+  const hh = Number(m[4] || 0)
+  const mi = Number(m[5] || 0)
+  const ss = Number(m[6] || 0)
+  return new Date(Date.UTC(yyyy, mo, dd, hh - 9, mi, ss)).toISOString()
 }
 
-function isActive(row = {}) {
-  const enabled = Number(row.blackMode ?? row.black_mode ?? 0) === 1
-  const until = String(row.blackModeUntil ?? row.black_mode_until ?? '').trim()
-  if (!enabled) return false
-  if (!until) return true
-  const ms = Date.parse(until)
-  if (!ms) return true
-  return ms >= Date.now()
+function parseDays(value) {
+  if (Array.isArray(value)) return [...new Set(value.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))]
+  try { return parseDays(JSON.parse(String(value || '[]'))) } catch { return [] }
 }
 
-function mapStore(row = {}) {
-  const active = isActive(row)
-  const until = String(row.blackModeUntil ?? row.black_mode_until ?? '').trim()
+function inTimeRange(nowHHMM, start, end) {
+  const s = String(start || '00:00').slice(0, 5)
+  const e = String(end || '23:59').slice(0, 5)
+  if (s <= e) return nowHHMM >= s && nowHHMM <= e
+  // 자정을 넘기는 스케줄: 22:00~02:00
+  return nowHHMM >= s || nowHHMM <= e
+}
+
+function evaluate(row = {}, now = new Date()) {
+  const p = kstParts(now)
+  const nowIso = now.toISOString()
+  const immediateUntil = String(row.immediate_until || row.immediateUntil || '')
+  const immediateActive = Number(row.immediate_active ?? row.immediateActive ?? 0) === 1
+  const immediateOn = immediateActive && (!immediateUntil || immediateUntil >= nowIso)
+
+  const scheduleEnabled = Number(row.schedule_enabled ?? row.scheduleEnabled ?? 0) === 1
+  const days = parseDays(row.schedule_days_json ?? row.scheduleDaysJson ?? row.scheduleDays ?? [])
+  const scheduleOn = scheduleEnabled && days.includes(p.day) && inTimeRange(p.hhmm, row.schedule_start || row.scheduleStart, row.schedule_end || row.scheduleEnd)
+
+  const active = Boolean(immediateOn || scheduleOn)
+  const reason = immediateOn ? 'immediate' : scheduleOn ? 'schedule' : 'off'
+  return { active, reason, nowKst: nowKstString(), nowUtc: nowIso }
+}
+
+function mapRow(row = null) {
+  if (!row) {
+    const ev = evaluate({})
+    return {
+      store: '', blackMode: false, active: false, reason: 'off', message: '',
+      immediateActive: false, immediateUntil: '', immediateUntilKst: '',
+      scheduleEnabled: false, scheduleDays: [], scheduleStart: '00:00', scheduleEnd: '23:59',
+      updatedAt: '', updatedAtKst: '', ...ev,
+    }
+  }
+  const ev = evaluate(row)
+  const immediateUntil = row.immediate_until || ''
   return {
-    id: row.id || '',
-    appId: row.appId || row.app_id || '',
-    store: row.slug || row.store || '',
-    slug: row.slug || row.store || '',
-    name: row.name || row.slug || '',
-    blackMode: active,
-    blackModeRaw: Boolean(Number(row.blackMode ?? row.black_mode ?? 0)),
-    blackModeUntil: until,
-    blackModeUntilUtc: until,
-    blackModeUntilKst: until ? toKstString(until) : '',
-    blackModeReason: row.blackModeReason ?? row.black_mode_reason ?? '',
-    blackModeUpdatedAt: row.blackModeUpdatedAt ?? row.black_mode_updated_at ?? '',
-    blackModeUpdatedAtKst: (row.blackModeUpdatedAt ?? row.black_mode_updated_at) ? toKstString(row.blackModeUpdatedAt ?? row.black_mode_updated_at) : '',
+    store: row.store || '',
+    blackMode: ev.active,
+    active: ev.active,
+    reason: ev.reason,
+    message: row.message || '',
+    immediateActive: Number(row.immediate_active || 0) === 1,
+    immediateUntil,
+    immediateUntilKst: immediateUntil ? toKstString(immediateUntil) : '',
+    scheduleEnabled: Number(row.schedule_enabled || 0) === 1,
+    scheduleDays: parseDays(row.schedule_days_json || '[]'),
+    scheduleStart: row.schedule_start || '00:00',
+    scheduleEnd: row.schedule_end || '23:59',
+    updatedAt: row.updated_at || '',
+    updatedAtKst: row.updated_at ? toKstString(row.updated_at) : '',
+    ...ev,
   }
 }
 
-async function readRows(env, store = '') {
-  if (store) {
-    const row = await env.DB.prepare(`
-      SELECT id, app_id AS appId, name, slug,
-             black_mode AS blackMode, black_mode_until AS blackModeUntil,
-             black_mode_reason AS blackModeReason, black_mode_updated_at AS blackModeUpdatedAt
-      FROM stores
-      WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?
-      LIMIT 1
-    `).bind(store, store, store).first()
-    return row ? [row] : []
-  }
-  const { results } = await env.DB.prepare(`
-    SELECT id, app_id AS appId, name, slug,
-           black_mode AS blackMode, black_mode_until AS blackModeUntil,
-           black_mode_reason AS blackModeReason, black_mode_updated_at AS blackModeUpdatedAt
-    FROM stores
-    ORDER BY app_id ASC, created_at DESC
-  `).all()
-  return results || []
+async function readMode(env, store) {
+  await ensureBlackModeSchema(env)
+  const row = await env.DB.prepare(`SELECT * FROM black_modes WHERE store = ? LIMIT 1`).bind(store).first()
+  return mapRow(row ? { ...row, store } : { store })
 }
 
-async function clearExpired(env, rows = []) {
-  const expired = rows.filter((r) => Number(r.blackMode ?? 0) === 1 && r.blackModeUntil && Date.parse(r.blackModeUntil) && Date.parse(r.blackModeUntil) < Date.now())
-  for (const row of expired) {
-    await env.DB.prepare(`
-      UPDATE stores
-      SET black_mode = 0, black_mode_reason = '', black_mode_updated_at = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).bind(nowUtcIso(), row.id).run()
-    row.blackMode = 0
-    row.blackModeReason = ''
-    row.blackModeUpdatedAt = nowUtcIso()
+async function upsertMode(env, store, patch = {}) {
+  await ensureBlackModeSchema(env)
+  const now = nowUtcIso()
+  const current = await env.DB.prepare(`SELECT * FROM black_modes WHERE store = ? LIMIT 1`).bind(store).first()
+  const next = {
+    immediateActive: patch.immediateActive ?? (current ? Number(current.immediate_active || 0) === 1 : false),
+    immediateUntil: patch.immediateUntil ?? (current?.immediate_until || ''),
+    scheduleEnabled: patch.scheduleEnabled ?? (current ? Number(current.schedule_enabled || 0) === 1 : false),
+    scheduleDays: patch.scheduleDays ?? parseDays(current?.schedule_days_json || '[]'),
+    scheduleStart: patch.scheduleStart ?? (current?.schedule_start || '00:00'),
+    scheduleEnd: patch.scheduleEnd ?? (current?.schedule_end || '23:59'),
+    message: patch.message ?? (current?.message || ''),
   }
+
+  await env.DB.prepare(`
+    INSERT INTO black_modes
+    (store, immediate_active, immediate_until, schedule_enabled, schedule_days_json, schedule_start, schedule_end, message, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(store) DO UPDATE SET
+      immediate_active = excluded.immediate_active,
+      immediate_until = excluded.immediate_until,
+      schedule_enabled = excluded.schedule_enabled,
+      schedule_days_json = excluded.schedule_days_json,
+      schedule_start = excluded.schedule_start,
+      schedule_end = excluded.schedule_end,
+      message = excluded.message,
+      updated_at = excluded.updated_at
+  `).bind(
+    store,
+    next.immediateActive ? 1 : 0,
+    next.immediateUntil || '',
+    next.scheduleEnabled ? 1 : 0,
+    JSON.stringify(parseDays(next.scheduleDays)),
+    String(next.scheduleStart || '00:00').slice(0, 5),
+    String(next.scheduleEnd || '23:59').slice(0, 5),
+    String(next.message || ''),
+    now
+  ).run()
+
+  return readMode(env, store)
 }
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
   const url = new URL(request.url)
-  const store = cleanSlug(url.searchParams.get('store') || url.searchParams.get('slug') || url.searchParams.get('id') || url.searchParams.get('appId') || '')
-  const rows = await readRows(env, store)
-  await clearExpired(env, rows)
-  const stores = rows.map(mapStore)
-  return json({
-    ok: true,
-    version: LV_CORE_VERSION,
-    endpoint: '/api/black-mode',
-    store: stores[0] || null,
-    stores,
-    blackMode: Boolean(stores[0]?.blackMode),
-    serverNowUtc: nowUtcIso(),
-    serverNowKst: nowKstString(),
-  })
+  const store = cleanSlug(url.searchParams.get('store') || '')
+  if (!store) return json({ ok: false, error: 'store is required' }, 400)
+  try {
+    const mode = await readMode(env, store)
+    return json({ ok: true, endpoint: '/api/black-mode', mode })
+  } catch (error) {
+    return json({ ok: false, error: error?.message || 'black mode read failed' }, 500)
+  }
 }
 
 export async function onRequestPost({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
   const body = await readBody(request)
-  const store = cleanSlug(body.store || body.slug || body.id || body.appId || '')
+  const store = cleanSlug(body.store || '')
   if (!store) return json({ ok: false, error: 'store is required' }, 400)
-  const enable = truthy(body.blackMode ?? body.enabled ?? body.on)
-  const until = enable ? normalizeUntil(body.until || body.blackModeUntil || body.untilKst || '') : ''
-  const reason = enable ? String(body.reason || body.blackModeReason || '휴무모드').trim() : ''
-  const updatedAt = nowUtcIso()
-
-  const result = await env.DB.prepare(`
-    UPDATE stores
-    SET black_mode = ?, black_mode_until = ?, black_mode_reason = ?, black_mode_updated_at = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE slug = ? OR lower(app_id) = lower(?) OR id = ?
-  `).bind(enable ? 1 : 0, until, reason, updatedAt, store, store, store).run()
-
-  if (!result.meta || result.meta.changes === 0) return json({ ok: false, error: 'store not found' }, 404)
-  const rows = await readRows(env, store)
-  return json({
-    ok: true,
-    version: LV_CORE_VERSION,
-    endpoint: '/api/black-mode',
-    action: enable ? 'on' : 'off',
-    store: rows[0] ? mapStore(rows[0]) : null,
-    blackMode: enable,
-    blackModeUntil: until,
-    blackModeUntilKst: until ? toKstString(until) : '',
-    serverNowUtc: updatedAt,
-    serverNowKst: nowKstString(),
-  })
+  const action = String(body.action || body.mode || '').toLowerCase()
+  try {
+    let saved
+    if (action === 'off' || action === 'disable' || action === 'clear') {
+      saved = await upsertMode(env, store, { immediateActive: false, immediateUntil: '', message: body.message || '' })
+    } else if (action === 'immediate' || action === 'on' || action === 'today') {
+      const until = localKstToUtcIso(body.until || body.immediateUntil || '') || endOfTodayKstUtcIso()
+      saved = await upsertMode(env, store, { immediateActive: true, immediateUntil: until, message: body.message || '휴무모드' })
+    } else if (action === 'schedule') {
+      saved = await upsertMode(env, store, {
+        scheduleEnabled: body.enabled !== false,
+        scheduleDays: parseDays(body.days || body.scheduleDays || []),
+        scheduleStart: body.start || body.scheduleStart || '00:00',
+        scheduleEnd: body.end || body.scheduleEnd || '23:59',
+        message: body.message || '정기 휴무모드',
+      })
+    } else if (action === 'schedule-off') {
+      saved = await upsertMode(env, store, { scheduleEnabled: false })
+    } else {
+      return json({ ok: false, error: 'invalid action' }, 400)
+    }
+    return json({ ok: true, endpoint: '/api/black-mode', mode: saved })
+  } catch (error) {
+    return json({ ok: false, error: error?.message || 'black mode update failed' }, 500)
+  }
 }
 
 export async function onRequestPatch(ctx) { return onRequestPost(ctx) }

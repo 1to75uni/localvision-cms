@@ -1,4 +1,4 @@
-LocalVision CMS v1.9.2 VISIBILITY BUTTON + MODAL FIX
+LocalVision CMS v1.9.5 VISIBILITY BUTTON + MODAL FIX
 
 기준 파일: LocalVision_CMS_v1.9.2_VISIBILITY_BUTTON_MODAL_FIX_FINAL.zip
 
@@ -23,7 +23,7 @@ LocalVision CMS v1.9.2 VISIBILITY BUTTON + MODAL FIX
 - APP/Player 수정 없음
 
 배포 후 확인:
-- /api/health → v1.9.2-visibility-button-modal-fix
+- /api/health → v1.9.5-device-control-black-mode-ui-version-fix
 - /assets/lv-right-targets-v192.js → STATUS 200
 - 새 right 업로드 직후 해당 카드에 [송출 매장 보기] 표시
 - [송출 매장 보기] 클릭 즉시 모달 표시

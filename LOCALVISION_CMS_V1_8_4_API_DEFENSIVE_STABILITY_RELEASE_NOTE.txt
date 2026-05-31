@@ -32,7 +32,7 @@ LocalVision CMS v1.8.4 API DEFENSIVE STABILITY
    - player-errors/screenshots/app-config/playlist 같은 보조 API 실패는 서버 전체 장애로 표시하지 않음.
 
 운영 원칙:
-- Player v1.7.3은 유지.
+- Player v1.7.6은 유지.
 - APP 수정 없음.
 - D1/R2 데이터 삭제 없음.
 - 기존 API 응답 형태와 Player 호환성 유지.

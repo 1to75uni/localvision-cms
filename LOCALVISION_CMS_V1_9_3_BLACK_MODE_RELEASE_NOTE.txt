@@ -1,6 +1,0 @@
-LocalVision CMS v1.9.3 black mode final
-- /api/black-mode 추가
-- stores 테이블 black_mode, black_mode_until, black_mode_reason, black_mode_updated_at 자동 보강
-- CMS 우하단 휴무모드 관리 버튼 추가
-- ON 기본값: 오늘 23:59 KST 자동 해제
-- Player는 60초마다 확인 후 검은 오버레이 표시

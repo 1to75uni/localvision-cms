@@ -51,7 +51,7 @@ async function isAppIdAvailable(env, appId) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  // v1.8.2: 목록 조회는 schema repair 없이 가볍게 실행합니다.
   const { results } = await env.DB.prepare(`
     SELECT
       id,
@@ -65,10 +65,6 @@ export async function onRequestGet({ request, env }) {
       plan,
       player_url AS playerUrl,
       player_url_updated_at AS playerUrlUpdatedAt,
-      black_mode AS blackMode,
-      black_mode_until AS blackModeUntil,
-      black_mode_reason AS blackModeReason,
-      black_mode_updated_at AS blackModeUpdatedAt,
       created_at AS createdAt,
       updated_at AS updatedAt
     FROM stores
@@ -77,9 +73,6 @@ export async function onRequestGet({ request, env }) {
 
   const stores = (results || []).map((store) => ({
     ...store,
-    blackMode: Boolean(Number(store.blackMode || 0)),
-    blackModeUntilKst: store.blackModeUntil ? toKstString(store.blackModeUntil) : '',
-    blackModeUpdatedAtKst: store.blackModeUpdatedAt ? toKstString(store.blackModeUpdatedAt) : '',
     createdAtKst: store.createdAt ? toKstString(store.createdAt) : '',
     updatedAtKst: store.updatedAt ? toKstString(store.updatedAt) : '',
     playerUrlUpdatedAtKst: store.playerUrlUpdatedAt ? toKstString(store.playerUrlUpdatedAt) : '',
