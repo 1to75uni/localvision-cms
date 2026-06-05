@@ -1,6 +1,6 @@
 import {
   json,
-  ensureCoreSchema,
+  ensureScheduleSchema,
   cleanSlug,
   defaultPlaylistGroupId,
   ensureDefaultPlaylistGroup,
@@ -36,9 +36,9 @@ async function withCounts(env, groups = []) {
   return output
 }
 
-export async function onRequestGet({ request, env }) {
+async function handleGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  await ensureScheduleSchema(env)
   const url = new URL(request.url)
   const store = cleanSlug(url.searchParams.get('store') || '')
   if (!store) return json({ ok: false, error: 'store is required' }, 400)
@@ -47,9 +47,9 @@ export async function onRequestGet({ request, env }) {
   return json({ ok: true, endpoint: '/api/playlist-groups', store, groups })
 }
 
-export async function onRequestPost({ request, env }) {
+async function handlePost({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  await ensureScheduleSchema(env)
   const body = await readBody(request)
   const store = cleanSlug(body.store || '')
   if (!store) return json({ ok: false, error: 'store is required' }, 400)
@@ -120,9 +120,9 @@ export async function onRequestPost({ request, env }) {
   })
 }
 
-export async function onRequestPatch({ request, env }) {
+async function handlePatch({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  await ensureScheduleSchema(env)
   const body = await readBody(request)
   const id = String(body.id || '').trim()
   if (!id) return json({ ok: false, error: 'id is required' }, 400)
@@ -147,9 +147,9 @@ export async function onRequestPatch({ request, env }) {
   return json({ ok: true, store: current.store, group: groups.find((g) => g.id === id) || null, groups, snapshot })
 }
 
-export async function onRequestDelete({ request, env }) {
+async function handleDelete({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  await ensureScheduleSchema(env)
   const url = new URL(request.url)
   const id = String(url.searchParams.get('id') || '').trim()
   if (!id) return json({ ok: false, error: 'id is required' }, 400)
@@ -167,3 +167,19 @@ export async function onRequestDelete({ request, env }) {
   const groups = await withCounts(env, await readPlaylistGroups(env, group.store))
   return json({ ok: true, store: group.store, deleted: id, movedContentsTo: fallbackId, groups, snapshot })
 }
+
+function scheduleApiError(error, endpoint = '/api/playlist-groups') {
+  return json({
+    ok: false,
+    endpoint,
+    version: 'v2.0.2-schedule-api-503-fix',
+    errorCode: 'LV-SCHEDULE-API-ERROR',
+    error: String(error?.message || error),
+    message: '시간대별 송출 API 오류가 발생했습니다. JSON 응답은 유지되므로 화면에서 원인을 확인할 수 있습니다.',
+  }, 500)
+}
+
+export async function onRequestGet(ctx) { try { return await handleGet(ctx) } catch (error) { return scheduleApiError(error) } }
+export async function onRequestPost(ctx) { try { return await handlePost(ctx) } catch (error) { return scheduleApiError(error) } }
+export async function onRequestPatch(ctx) { try { return await handlePatch(ctx) } catch (error) { return scheduleApiError(error) } }
+export async function onRequestDelete(ctx) { try { return await handleDelete(ctx) } catch (error) { return scheduleApiError(error) } }

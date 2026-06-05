@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.0.1-schedule-playlist-uiux'
+export const LV_CORE_VERSION = 'v2.0.2-schedule-api-503-fix'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -496,6 +496,98 @@ async function addColumnIfMissing(env, table, column, definition) {
     // 그래서 migration 보강 컬럼은 모두 안전한 상수 기본값만 사용합니다.
     await tryRun(env, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
   }
+}
+
+
+// v2.0.2: 스케줄 API 전용 경량 스키마 보강.
+// /api/playlist-groups, /api/playlist-schedules는 매장 운영 중 자주 호출될 수 있으므로
+// 전체 ensureCoreSchema(모든 테이블/인덱스/APP ID 보정)를 매번 돌리지 않습니다.
+// 필요한 테이블/컬럼만 안전하게 보강해서 Cloudflare 503/타임아웃 리스크를 줄입니다.
+export async function ensureScheduleSchema(env) {
+  if (!env.DB) throw new Error('D1 binding DB is missing')
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS playlist_groups (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      status TEXT DEFAULT '사용중',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(store, slug)
+    )
+  `).run()
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS playlist_schedules (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      name TEXT NOT NULL,
+      days_json TEXT DEFAULT '[1,2,3,4,5]',
+      start_time TEXT DEFAULT '11:00',
+      end_time TEXT DEFAULT '14:00',
+      playlist_group_id TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 100,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run()
+
+  // 기존 contents 테이블은 이미 CMS 운영에 존재합니다. 없을 경우만 최소 형태로 생성합니다.
+  // 전체 contents 구조를 바꾸지 않고 playlist_group_id만 보강합니다.
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS contents (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      side TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      duration INTEGER DEFAULT 20,
+      status TEXT DEFAULT '사용중',
+      file_name TEXT DEFAULT '',
+      url TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      r2_key TEXT DEFAULT '',
+      target_mode TEXT DEFAULT 'all',
+      target_stores_json TEXT DEFAULT '[]',
+      playlist_group_id TEXT DEFAULT ''
+    )
+  `).run()
+
+  await addColumnIfMissing(env, 'contents', 'playlist_group_id', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'slug', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'is_default', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'playlist_groups', 'status', `TEXT DEFAULT '사용중'`)
+  await addColumnIfMissing(env, 'playlist_groups', 'sort_order', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'playlist_groups', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'updated_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'days_json', `TEXT DEFAULT '[1,2,3,4,5]'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'start_time', `TEXT DEFAULT '11:00'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'end_time', `TEXT DEFAULT '14:00'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'playlist_group_id', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'enabled', `INTEGER DEFAULT 1`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'priority', `INTEGER DEFAULT 100`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'updated_at', `TEXT DEFAULT ''`)
+
+  await tryRun(env, `UPDATE playlist_groups SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE playlist_groups SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE playlist_schedules SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE playlist_schedules SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_playlist_group ON contents(store, side, playlist_group_id)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_playlist_groups_store ON playlist_groups(store, sort_order)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_playlist_schedules_store ON playlist_schedules(store, enabled, priority)`)
+
+  return { ok: true, mode: 'schedule-schema-light' }
 }
 
 export async function ensureCoreSchema(env) {

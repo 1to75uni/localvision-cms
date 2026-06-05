@@ -1,0 +1,16 @@
+LocalVision CMS v2.0.2 Schedule API 503 Fix
+
+목적:
+- /api/playlist-groups, /api/playlist-schedules 호출 시 503으로 떨어지는 문제 보완
+- player-state는 정상인데 스케줄 API만 실패하는 상황 대응
+
+핵심 수정:
+1. 스케줄 API에서 전체 ensureCoreSchema를 매번 실행하지 않도록 변경
+2. 스케줄 전용 경량 ensureScheduleSchema 추가
+3. playlist_groups, playlist_schedules, contents.playlist_group_id만 필요한 만큼 보강
+4. 스케줄 API 오류 발생 시 HTML/503 대신 JSON 오류 응답을 최대한 유지
+5. CMS 표기 버전 v2.0.2로 업데이트
+
+운영 기준:
+- CMS v2.0.2 + Player v1.8.0 조합 유지
+- APP 수정 없음

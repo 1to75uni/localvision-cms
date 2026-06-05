@@ -1,8 +1,8 @@
 {
   "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
-  "version": "2.0.1-schedule-playlist-uiux",
+  "version": "2.0.2-schedule-api-503-fix",
   "private": true,
-  "description": "LocalVision CMS v2.0.1: left-menu schedule playlist UI/UX with no floating status tabs.",
+  "description": "LocalVision CMS v2.0.2: schedule API 503 fix with lightweight schedule schema guard.",
   "scripts": {
     "build": "node build-static.js"
   },

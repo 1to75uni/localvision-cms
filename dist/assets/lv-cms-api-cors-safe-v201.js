@@ -1,4 +1,4 @@
-// LocalVision CMS v2.0.1 API guard - no floating status banner
+// LocalVision CMS v2.0.2 API guard - no floating status banner
 // 목표: CMS 페이지를 여는 즉시 API를 1회 호출하고, 이후 호출은 CMS 화면/정해진 주기에 맡깁니다.
 // 원칙: fetch 응답을 60초씩 붙잡아 화면을 멈추게 하지 않습니다. 실패 감지는 빠르게, 재연결 감지는 백그라운드로 처리합니다.
 (function () {
@@ -70,14 +70,14 @@
   }
 
   function ensureBanner() {
-    // v2.0.1: 오른쪽 하단 서버 연결 플로팅 탭을 제거합니다.
+    // v2.0.2: 오른쪽 하단 서버 연결 플로팅 탭을 제거합니다.
     // API fetch 안정화 로직은 유지하되, 운영 화면에는 배너를 띄우지 않습니다.
     return null;
   }
 
   function setBanner(state, message) {
     lastState = state;
-    // intentionally hidden in CMS v2.0.1
+    // intentionally hidden in CMS v2.0.2
   }
 
   async function lightGet(path) {

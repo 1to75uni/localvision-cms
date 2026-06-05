@@ -310,7 +310,7 @@ export async function onRequestDelete({ request, env }) {
   const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
-    version: 'v2.0.1-schedule-playlist-uiux',
+    version: 'v2.0.2-schedule-api-503-fix',
     snapshot,
     contentReflect: {
       side: row.side,
