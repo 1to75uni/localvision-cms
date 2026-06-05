@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromBody, parseTargetStores, normalizeTargetMode } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromBody, parseTargetStores, normalizeTargetMode, defaultPlaylistGroupId, ensureDefaultPlaylistGroup } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -34,6 +34,7 @@ function mapContent(row = {}) {
     sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0),
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     r2Key: row.r2Key ?? row.r2_key ?? r2KeyFromUrl(row.url || ''),
+    playlistGroupId: row.playlistGroupId ?? row.playlist_group_id ?? '',
     targetMode: normalizeTargetMode(row.targetMode ?? row.target_mode, row.targetStoresJson ?? row.target_stores_json ?? ''),
     targetStores: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? ''),
     targetCount: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? '').length,
@@ -47,6 +48,7 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
   const store = url.searchParams.get('store')
   const side = url.searchParams.get('side')
+  const playlistGroupId = String(url.searchParams.get('playlistGroupId') || url.searchParams.get('playlist_group_id') || '').trim()
 
   let sql = `
     SELECT
@@ -57,7 +59,8 @@ export async function onRequestGet({ request, env }) {
       updated_at AS updatedAt,
       r2_key AS r2Key,
       target_mode AS targetMode,
-      target_stores_json AS targetStoresJson
+      target_stores_json AS targetStoresJson,
+      playlist_group_id AS playlistGroupId
     FROM contents
   `
   const params = []
@@ -65,6 +68,7 @@ export async function onRequestGet({ request, env }) {
 
   if (store) { where.push('store = ?'); params.push(store) }
   if (side) { where.push('side = ?'); params.push(side) }
+  if (playlistGroupId) { where.push('playlist_group_id = ?'); params.push(playlistGroupId) }
 
   if (where.length) sql += ` WHERE ${where.join(' AND ')}`
   sql += ` ORDER BY side ASC, sort_order ASC, updated_at DESC`
@@ -96,6 +100,12 @@ export async function onRequestPost({ request, env }) {
     updatedAt: body.updatedAt || new Date().toISOString(),
     r2Key: String(body.r2Key || body.r2_key || r2KeyFromUrl(body.url || '')).trim(),
   }
+  if (content.side === 'left') {
+    await ensureDefaultPlaylistGroup(env, content.store)
+    content.playlistGroupId = String(body.playlistGroupId || body.playlist_group_id || defaultPlaylistGroupId(content.store)).trim()
+  } else {
+    content.playlistGroupId = ''
+  }
   const target = contentTargetFromBody(body, content.side)
   content.targetMode = target.targetMode
   content.targetStores = target.targetStores
@@ -103,12 +113,12 @@ export async function onRequestPost({ request, env }) {
 
   await env.DB.prepare(`
     INSERT OR REPLACE INTO contents
-    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json, playlist_group_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     content.id, content.store, content.side, content.type, content.title,
     content.duration, content.status, content.fileName, content.url,
-    content.sortOrder, content.updatedAt, content.r2Key, content.targetMode, content.targetStoresJson
+    content.sortOrder, content.updatedAt, content.r2Key, content.targetMode, content.targetStoresJson, content.playlistGroupId
   ).run()
 
   let snapshot = null
@@ -145,7 +155,8 @@ export async function onRequestPatch({ request, env }) {
   const current = await env.DB.prepare(`
     SELECT id, store, side, type, title, duration, status, file_name AS fileName, url,
            sort_order AS sortOrder, updated_at AS updatedAt, r2_key AS r2Key,
-           target_mode AS targetMode, target_stores_json AS targetStoresJson
+           target_mode AS targetMode, target_stores_json AS targetStoresJson,
+           playlist_group_id AS playlistGroupId
     FROM contents
     WHERE id = ?
     LIMIT 1
@@ -153,7 +164,16 @@ export async function onRequestPatch({ request, env }) {
   if (!current) return json({ ok: false, error: 'content not found', id }, 404)
 
   const side = String(body.side || current.side || '').trim()
-  const target = contentTargetFromBody(body, side)
+  const targetFieldsProvided = body.targetMode !== undefined || body.target_mode !== undefined || body.targetStores !== undefined || body.target_stores !== undefined || body.targetStoresJson !== undefined || body.target_stores_json !== undefined
+  const target = targetFieldsProvided ? contentTargetFromBody(body, side) : {
+    targetMode: current.targetMode || 'all',
+    targetStoresJson: current.targetStoresJson || '[]',
+  }
+  let nextPlaylistGroupId = current.playlistGroupId || ''
+  if (body.playlistGroupId !== undefined || body.playlist_group_id !== undefined) {
+    nextPlaylistGroupId = side === 'left' ? String(body.playlistGroupId ?? body.playlist_group_id ?? '').trim() : ''
+    if (!nextPlaylistGroupId && side === 'left') nextPlaylistGroupId = defaultPlaylistGroupId(current.store)
+  }
   const next = {
     title: body.title !== undefined ? String(body.title || '').trim() : current.title,
     duration: body.duration !== undefined ? Number(body.duration) || DEFAULT_CONTENT_DURATION : Number(current.duration || DEFAULT_CONTENT_DURATION),
@@ -161,14 +181,15 @@ export async function onRequestPatch({ request, env }) {
     sortOrder: body.sortOrder !== undefined || body.sort_order !== undefined ? Number(body.sortOrder ?? body.sort_order) || 0 : Number(current.sortOrder || 0),
     targetMode: target.targetMode,
     targetStoresJson: target.targetStoresJson,
+    playlistGroupId: nextPlaylistGroupId,
     updatedAt: new Date().toISOString(),
   }
 
   await env.DB.prepare(`
     UPDATE contents
-    SET title = ?, duration = ?, status = ?, sort_order = ?, target_mode = ?, target_stores_json = ?, updated_at = ?
+    SET title = ?, duration = ?, status = ?, sort_order = ?, target_mode = ?, target_stores_json = ?, playlist_group_id = ?, updated_at = ?
     WHERE id = ?
-  `).bind(next.title, next.duration, next.status, next.sortOrder, next.targetMode, next.targetStoresJson, next.updatedAt, id).run()
+  `).bind(next.title, next.duration, next.status, next.sortOrder, next.targetMode, next.targetStoresJson, next.playlistGroupId, next.updatedAt, id).run()
 
   let snapshot = null
   try { snapshot = current.store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, current.store) }
@@ -176,7 +197,7 @@ export async function onRequestPatch({ request, env }) {
 
   return json({
     ok: true,
-    content: mapContent({ ...current, ...next, targetStoresJson: next.targetStoresJson }),
+    content: mapContent({ ...current, ...next, targetStoresJson: next.targetStoresJson, playlistGroupId: next.playlistGroupId }),
     snapshot,
     contentReflect: {
       side: current.side,

@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v1.9.5-device-control-black-mode-ui-version-fix'
+export const LV_CORE_VERSION = 'v2.0.0-schedule-playlist-mvp'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000
@@ -383,13 +383,14 @@ function contentKey(row = {}) {
   const store = String(row.store || '').trim()
   const side = String(row.side || '').trim()
   const fileName = String(row.fileName ?? row.file_name ?? '').trim()
+  const playlistGroupId = String(row.playlistGroupId ?? row.playlist_group_id ?? '').trim()
   const urlPath = canonicalUrl(row.url || '')
   const byFile = normalizeMediaToken(fileName)
   const byUrl = normalizeMediaToken(urlPath)
   const byTitle = normalizeMediaToken(row.title || '')
   const token = byFile || byUrl || byTitle
   if (!store || !side || !token) return ''
-  return `${store}::${side}::${token}`
+  return `${store}::${side}::${playlistGroupId || 'default'}::${token}`
 }
 
 function contentScore(row = {}) {
@@ -425,7 +426,7 @@ export async function cleanupDuplicateContents(env) {
   if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0 }
   try {
     const { results } = await env.DB.prepare(`
-      SELECT id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key
+      SELECT id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, playlist_group_id
       FROM contents
       ORDER BY store ASC, side ASC, sort_order ASC, updated_at DESC
     `).all()
@@ -462,6 +463,7 @@ export async function cleanupSyntheticR2Duplicates(env) {
             AND c2.store = contents.store
             AND c2.side = contents.side
             AND COALESCE(c2.file_name, '') = COALESCE(contents.file_name, '')
+            AND COALESCE(c2.playlist_group_id, '') = COALESCE(contents.playlist_group_id, '')
         )
     `).run()
     return { ok: true, deleted: result?.meta?.changes || 0 }
@@ -619,6 +621,38 @@ export async function ensureCoreSchema(env) {
     )
   `).run()
 
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS playlist_groups (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      status TEXT DEFAULT '사용중',
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(store, slug)
+    )
+  `).run()
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS playlist_schedules (
+      id TEXT PRIMARY KEY,
+      store TEXT NOT NULL,
+      name TEXT NOT NULL,
+      days_json TEXT DEFAULT '[1,2,3,4,5]',
+      start_time TEXT DEFAULT '11:00',
+      end_time TEXT DEFAULT '14:00',
+      playlist_group_id TEXT NOT NULL,
+      enabled INTEGER DEFAULT 1,
+      priority INTEGER DEFAULT 100,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run()
+
   // 기존 Core01/예전 D1 스키마와 섞여 있어도 API가 죽지 않도록 모든 필수 컬럼을 보강합니다.
   await addColumnIfMissing(env, 'stores', 'category', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'stores', 'address', `TEXT DEFAULT ''`)
@@ -640,6 +674,7 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'contents', 'r2_key', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'contents', 'target_mode', `TEXT DEFAULT 'all'`)
   await addColumnIfMissing(env, 'contents', 'target_stores_json', `TEXT DEFAULT '[]'`)
+  await addColumnIfMissing(env, 'contents', 'playlist_group_id', `TEXT DEFAULT ''`)
 
   await addColumnIfMissing(env, 'devices', 'role', `TEXT DEFAULT 'tv'`)
   await addColumnIfMissing(env, 'devices', 'online', `INTEGER DEFAULT 0`)
@@ -690,12 +725,37 @@ export async function ensureCoreSchema(env) {
   await addColumnIfMissing(env, 'black_modes', 'message', `TEXT DEFAULT ''`)
   await addColumnIfMissing(env, 'black_modes', 'updated_at', `TEXT DEFAULT ''`)
 
+
+  await addColumnIfMissing(env, 'playlist_groups', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'slug', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'is_default', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'playlist_groups', 'status', `TEXT DEFAULT '사용중'`)
+  await addColumnIfMissing(env, 'playlist_groups', 'sort_order', `INTEGER DEFAULT 0`)
+  await addColumnIfMissing(env, 'playlist_groups', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_groups', 'updated_at', `TEXT DEFAULT ''`)
+
+  await addColumnIfMissing(env, 'playlist_schedules', 'store', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'name', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'days_json', `TEXT DEFAULT '[1,2,3,4,5]'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'start_time', `TEXT DEFAULT '11:00'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'end_time', `TEXT DEFAULT '14:00'`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'playlist_group_id', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'enabled', `INTEGER DEFAULT 1`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'priority', `INTEGER DEFAULT 100`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'created_at', `TEXT DEFAULT ''`)
+  await addColumnIfMissing(env, 'playlist_schedules', 'updated_at', `TEXT DEFAULT ''`)
+
   await tryRun(env, `UPDATE stores SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE stores SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE contents SET duration = 20 WHERE duration IS NULL OR duration = '' OR duration <= 0`)
   await tryRun(env, `UPDATE contents SET target_mode = 'all' WHERE target_mode IS NULL OR target_mode = ''`)
   await tryRun(env, `UPDATE contents SET target_stores_json = '[]' WHERE target_stores_json IS NULL OR target_stores_json = ''`)
+  await tryRun(env, `UPDATE playlist_groups SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE playlist_groups SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
+  await tryRun(env, `UPDATE playlist_schedules SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
+  await tryRun(env, `UPDATE playlist_schedules SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE devices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
   await tryRun(env, `UPDATE devices SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL OR updated_at = ''`)
   await tryRun(env, `UPDATE notices SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL OR created_at = ''`)
@@ -703,6 +763,10 @@ export async function ensureCoreSchema(env) {
 
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_store_side ON contents(store, side)`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_right_target ON contents(side, target_mode)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_contents_playlist_group ON contents(store, side, playlist_group_id)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_playlist_groups_store ON playlist_groups(store, sort_order)`)
+  await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_playlist_schedules_store ON playlist_schedules(store, enabled, priority)`)
+  await ensureDefaultPlaylistGroups(env)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_devices_store ON devices(store)`)
   await tryRun(env, `CREATE UNIQUE INDEX IF NOT EXISTS idx_stores_app_id_unique ON stores(app_id) WHERE app_id IS NOT NULL AND app_id <> ''`)
   await tryRun(env, `CREATE INDEX IF NOT EXISTS idx_player_errors_store_created ON player_errors(store, created_at)`)
@@ -900,8 +964,210 @@ export function normalizeContentForPlayer(row = {}) {
     updatedAt: row.updatedAt ?? row.updated_at ?? '',
     updatedAtKst: (row.updatedAt ?? row.updated_at) ? toKstString(row.updatedAt ?? row.updated_at) : '',
     r2Key: row.r2Key ?? row.r2_key ?? r2KeyFromUrl(row.url || ''),
+    playlistGroupId: row.playlistGroupId ?? row.playlist_group_id ?? '',
     targetMode: normalizeTargetMode(row.targetMode ?? row.target_mode, row.targetStoresJson ?? row.target_stores_json ?? ''),
     targetStores: parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? ''),
+  }
+}
+
+
+export function defaultPlaylistGroupId(store = '') {
+  const cleanStore = cleanSlug(store || '')
+  return cleanStore ? `pg_${cleanStore}_default` : ''
+}
+
+export function normalizePlaylistSlug(value = '') {
+  const slug = cleanSlug(value || '')
+  return slug || `group-${Date.now()}`
+}
+
+function parseJsonArray(value, fallback = []) {
+  if (Array.isArray(value)) return value
+  try {
+    const parsed = JSON.parse(String(value || ''))
+    return Array.isArray(parsed) ? parsed : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function mapPlaylistGroup(row = {}) {
+  return {
+    id: row.id,
+    store: row.store,
+    name: row.name || '기본 플레이리스트',
+    slug: row.slug || 'default',
+    isDefault: Boolean(Number(row.isDefault ?? row.is_default ?? 0)),
+    status: row.status || '사용중',
+    sortOrder: Number(row.sortOrder ?? row.sort_order ?? 0),
+    createdAt: row.createdAt ?? row.created_at ?? '',
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+  }
+}
+
+function mapPlaylistSchedule(row = {}) {
+  return {
+    id: row.id,
+    store: row.store,
+    name: row.name || '송출 스케줄',
+    days: parseJsonArray(row.daysJson ?? row.days_json, []),
+    daysJson: row.daysJson ?? row.days_json ?? '[]',
+    startTime: row.startTime ?? row.start_time ?? '00:00',
+    endTime: row.endTime ?? row.end_time ?? '23:59',
+    playlistGroupId: row.playlistGroupId ?? row.playlist_group_id ?? '',
+    enabled: Boolean(Number(row.enabled ?? 1)),
+    priority: Number(row.priority ?? 100),
+    createdAt: row.createdAt ?? row.created_at ?? '',
+    updatedAt: row.updatedAt ?? row.updated_at ?? '',
+  }
+}
+
+export async function ensureDefaultPlaylistGroup(env, store = '') {
+  if (!env.DB) return null
+  const cleanStore = cleanSlug(store || '')
+  if (!cleanStore || cleanStore === '_common') return null
+  const id = defaultPlaylistGroupId(cleanStore)
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO playlist_groups
+    (id, store, name, slug, is_default, status, sort_order, created_at, updated_at)
+    VALUES (?, ?, '기본 플레이리스트', 'default', 1, '사용중', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+  `).bind(id, cleanStore).run()
+  await env.DB.prepare(`
+    UPDATE contents
+    SET playlist_group_id = ?
+    WHERE store = ? AND side = 'left' AND (playlist_group_id IS NULL OR playlist_group_id = '')
+  `).bind(id, cleanStore).run()
+  return await env.DB.prepare(`
+    SELECT id, store, name, slug, is_default AS isDefault, status, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+    FROM playlist_groups
+    WHERE id = ?
+    LIMIT 1
+  `).bind(id).first()
+}
+
+export async function ensureDefaultPlaylistGroups(env) {
+  if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing' }
+  const storeSet = new Set()
+  try {
+    const stores = await env.DB.prepare(`SELECT slug FROM stores WHERE slug IS NOT NULL AND slug <> ''`).all()
+    ;(stores.results || []).forEach((row) => { const slug = cleanSlug(row.slug); if (slug && slug !== '_common') storeSet.add(slug) })
+  } catch {}
+  try {
+    const contents = await env.DB.prepare(`SELECT DISTINCT store FROM contents WHERE side = 'left' AND store IS NOT NULL AND store <> ''`).all()
+    ;(contents.results || []).forEach((row) => { const slug = cleanSlug(row.store); if (slug && slug !== '_common') storeSet.add(slug) })
+  } catch {}
+  for (const store of storeSet) await ensureDefaultPlaylistGroup(env, store)
+  return { ok: true, stores: [...storeSet], count: storeSet.size }
+}
+
+export async function readPlaylistGroups(env, store = '') {
+  const cleanStore = cleanSlug(store || '')
+  if (!env.DB || !cleanStore) return []
+  await ensureDefaultPlaylistGroup(env, cleanStore)
+  const { results } = await env.DB.prepare(`
+    SELECT id, store, name, slug, is_default AS isDefault, status, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+    FROM playlist_groups
+    WHERE store = ?
+    ORDER BY is_default DESC, sort_order ASC, created_at ASC
+  `).bind(cleanStore).all()
+  return (results || []).map(mapPlaylistGroup)
+}
+
+export async function readPlaylistSchedules(env, store = '') {
+  const cleanStore = cleanSlug(store || '')
+  if (!env.DB || !cleanStore) return []
+  const { results } = await env.DB.prepare(`
+    SELECT id, store, name, days_json AS daysJson, start_time AS startTime, end_time AS endTime,
+           playlist_group_id AS playlistGroupId, enabled, priority, created_at AS createdAt, updated_at AS updatedAt
+    FROM playlist_schedules
+    WHERE store = ?
+    ORDER BY enabled DESC, priority DESC, start_time ASC, created_at ASC
+  `).bind(cleanStore).all()
+  return (results || []).map(mapPlaylistSchedule)
+}
+
+export async function readContentsForPlaylistGroup(env, store = '', playlistGroupId = '') {
+  if (!env.DB) return []
+  const cleanStore = cleanSlug(store || '')
+  const groupId = String(playlistGroupId || defaultPlaylistGroupId(cleanStore)).trim()
+  if (!cleanStore || !groupId) return []
+  await ensureDefaultPlaylistGroup(env, cleanStore)
+  const { results } = await env.DB.prepare(`
+    SELECT id, store, side, type, title, duration, status,
+           file_name AS fileName, url, sort_order AS sortOrder,
+           updated_at AS updatedAt, r2_key AS r2Key,
+           target_mode AS targetMode, target_stores_json AS targetStoresJson,
+           playlist_group_id AS playlistGroupId
+    FROM contents
+    WHERE store = ? AND side = 'left' AND status = '사용중' AND playlist_group_id = ?
+    ORDER BY sort_order ASC, updated_at DESC
+  `).bind(cleanStore, groupId).all()
+  return dedupeContentsRows(results || [])
+    .map(normalizeContentForPlayer)
+    .filter((item) => item.url)
+}
+
+function minutesOfTime(value = '') {
+  const m = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!m) return 0
+  return Math.max(0, Math.min(23, Number(m[1]))) * 60 + Math.max(0, Math.min(59, Number(m[2])))
+}
+
+function kstParts(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value)
+  const kst = new Date(date.getTime() + KST_OFFSET_MS)
+  return {
+    day: kst.getUTCDay(),
+    minutes: kst.getUTCHours() * 60 + kst.getUTCMinutes(),
+    time: `${String(kst.getUTCHours()).padStart(2, '0')}:${String(kst.getUTCMinutes()).padStart(2, '0')}`,
+    date: `${kst.getUTCFullYear()}-${String(kst.getUTCMonth() + 1).padStart(2, '0')}-${String(kst.getUTCDate()).padStart(2, '0')}`,
+  }
+}
+
+export function isScheduleActiveAt(schedule = {}, value = new Date()) {
+  if (!schedule || schedule.enabled === false) return false
+  const parts = kstParts(value)
+  const days = Array.isArray(schedule.days) ? schedule.days.map(Number) : parseJsonArray(schedule.daysJson ?? schedule.days_json, []).map(Number)
+  if (!days.includes(parts.day)) return false
+  const start = minutesOfTime(schedule.startTime ?? schedule.start_time)
+  const end = minutesOfTime(schedule.endTime ?? schedule.end_time)
+  const now = parts.minutes
+  if (start === end) return true
+  if (start < end) return now >= start && now < end
+  return now >= start || now < end
+}
+
+export function pickActivePlaylistSchedule(schedules = [], value = new Date()) {
+  return [...(schedules || [])]
+    .filter((schedule) => schedule.enabled && isScheduleActiveAt(schedule, value))
+    .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))[0] || null
+}
+
+export async function makePlaylistSchedulePayload(env, store = '') {
+  const cleanStore = cleanSlug(store || '')
+  const groups = await readPlaylistGroups(env, cleanStore)
+  const schedules = await readPlaylistSchedules(env, cleanStore)
+  const groupsPayload = {}
+  const groupsById = {}
+  for (const group of groups) {
+    const left = await readContentsForPlaylistGroup(env, cleanStore, group.id)
+    const key = group.slug || group.id
+    const payload = { ...group, key, left, items: left, count: left.length }
+    groupsPayload[key] = payload
+    groupsById[group.id] = payload
+  }
+  const activeSchedule = pickActivePlaylistSchedule(schedules)
+  const defaultGroup = groups.find((g) => g.isDefault) || groups[0] || null
+  const scheduledGroup = activeSchedule && groupsById[activeSchedule.playlistGroupId]
+  const activeGroup = (scheduledGroup && Array.isArray(scheduledGroup.left) && scheduledGroup.left.length ? scheduledGroup : null) || (defaultGroup && groupsById[defaultGroup.id]) || null
+  return {
+    playlistGroups: groupsPayload,
+    playlistSchedules: schedules,
+    activeSchedule,
+    activePlaylistGroup: activeGroup,
+    activePlaylistKey: activeGroup?.key || 'default',
+    defaultPlaylistGroupId: defaultGroup?.id || defaultPlaylistGroupId(cleanStore),
+    defaultPlaylistKey: defaultGroup?.slug || 'default',
   }
 }
 
@@ -916,11 +1182,13 @@ export async function readContentsForPlaylist(env, store = '', side = 'left', vi
       SELECT id, store, side, type, title, duration, status,
              file_name AS fileName, url, sort_order AS sortOrder,
              updated_at AS updatedAt, r2_key AS r2Key,
-             target_mode AS targetMode, target_stores_json AS targetStoresJson
+             target_mode AS targetMode, target_stores_json AS targetStoresJson,
+             playlist_group_id AS playlistGroupId
       FROM contents
       WHERE store = ? AND side = ? AND status = '사용중'
+        AND (? <> 'left' OR playlist_group_id IS NULL OR playlist_group_id = '' OR playlist_group_id = ?)
       ORDER BY sort_order ASC, updated_at DESC
-    `).bind(targetStore, side).all()
+    `).bind(targetStore, side, side, defaultPlaylistGroupId(targetStore)).all()
   }
 
   let results = []
@@ -936,11 +1204,13 @@ export async function readContentsForPlaylist(env, store = '', side = 'left', vi
       const legacy = await env.DB.prepare(`
         SELECT id, store, side, type, title, duration, status,
                file_name AS fileName, url, sort_order AS sortOrder,
-               updated_at AS updatedAt, r2_key AS r2Key
+               updated_at AS updatedAt, r2_key AS r2Key,
+               playlist_group_id AS playlistGroupId
         FROM contents
         WHERE store = ? AND side = ? AND status = '사용중'
+          AND (? <> 'left' OR playlist_group_id IS NULL OR playlist_group_id = '' OR playlist_group_id = ?)
         ORDER BY sort_order ASC, updated_at DESC
-      `).bind(targetStore, side).all()
+      `).bind(targetStore, side, side, defaultPlaylistGroupId(targetStore)).all()
       results = legacy.results || []
     }
   }
@@ -977,24 +1247,55 @@ function snapshotVersionOf(left = [], right = []) {
 
 export async function makePlaylistSnapshot(request, env, store = '') {
   const cleanStore = cleanSlug(store || '')
-  const left = await readContentsForPlaylist(env, cleanStore, 'left')
+  let schedulePayload = {
+    playlistGroups: {},
+    playlistSchedules: [],
+    activeSchedule: null,
+    activePlaylistGroup: null,
+    activePlaylistKey: 'default',
+    defaultPlaylistGroupId: defaultPlaylistGroupId(cleanStore),
+    defaultPlaylistKey: 'default',
+  }
+  try { schedulePayload = await makePlaylistSchedulePayload(env, cleanStore) } catch (error) {}
+  const scheduledLeft = Array.isArray(schedulePayload?.activePlaylistGroup?.left) ? schedulePayload.activePlaylistGroup.left : []
+  const left = scheduledLeft.length ? scheduledLeft : await readContentsForPlaylist(env, cleanStore, 'left')
   const right = await readContentsForPlaylist(env, cleanStore, 'right', cleanStore)
   const now = nowUtcIso()
   const playlistVersion = snapshotVersionOf(left, right)
   return {
     ok: true,
     version: LV_CORE_VERSION,
-    mode: 'playlist-snapshot',
+    mode: 'playlist-snapshot-schedule-aware',
     store: cleanStore,
     playlistVersion,
     layout: { leftRatio: 70, rightRatio: 30 },
     playlists: { left, right },
+    playlistGroups: schedulePayload.playlistGroups || {},
+    playlistSchedules: schedulePayload.playlistSchedules || [],
+    activeSchedule: schedulePayload.activeSchedule || null,
+    activePlaylistGroup: schedulePayload.activePlaylistGroup ? {
+      id: schedulePayload.activePlaylistGroup.id,
+      name: schedulePayload.activePlaylistGroup.name,
+      slug: schedulePayload.activePlaylistGroup.slug,
+      key: schedulePayload.activePlaylistGroup.key,
+      count: schedulePayload.activePlaylistGroup.count,
+    } : null,
+    activePlaylistKey: schedulePayload.activePlaylistKey || 'default',
+    defaultPlaylistGroupId: schedulePayload.defaultPlaylistGroupId,
+    defaultPlaylistKey: schedulePayload.defaultPlaylistKey || 'default',
+    scheduleEngine: {
+      enabled: true,
+      timezone: 'Asia/Seoul',
+      mode: 'player-local-evaluation',
+      checkIntervalSec: 30,
+      fallback: 'default-playlist',
+    },
     playlistUrls: {
       bundle: playlistSnapshotUrl(request, env, cleanStore, 'bundle'),
       left: playlistSnapshotUrl(request, env, cleanStore, 'left'),
       right: playlistSnapshotUrl(request, env, '_common', 'right'),
     },
-    counts: { left: left.length, right: right.length },
+    counts: { left: left.length, right: right.length, playlistGroups: Object.keys(schedulePayload.playlistGroups || {}).length, schedules: (schedulePayload.playlistSchedules || []).length },
     updatedAt: now,
     updatedAtKst: nowKstString(),
   }

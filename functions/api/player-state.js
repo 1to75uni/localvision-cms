@@ -101,6 +101,7 @@ function versionOf(snapshot = {}, notice = null, devices = [], appConfig = null)
   const light = {
     playlistVersion: snapshot.playlistVersion || '',
     counts: snapshot.counts || {},
+    schedule: [snapshot.activePlaylistKey || '', (snapshot.playlistSchedules || []).map((s) => [s.id, s.enabled, s.daysJson || JSON.stringify(s.days || []), s.startTime, s.endTime, s.playlistGroupId, s.priority])],
     contentReflect: {
       expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,
       expectedText: `최대 ${Math.ceil(DEFAULT_PLAYER_STATE_POLL_MS / 60000)}분`,
@@ -311,6 +312,14 @@ export async function onRequestGet({ request, env }) {
       right: playlistSnapshotUrl(request, env, '_common', 'right'),
     },
     playlists: snapshot.playlists || { left: [], right: [] },
+    playlistGroups: snapshot.playlistGroups || {},
+    playlistSchedules: snapshot.playlistSchedules || [],
+    activeSchedule: snapshot.activeSchedule || null,
+    activePlaylistGroup: snapshot.activePlaylistGroup || null,
+    activePlaylistKey: snapshot.activePlaylistKey || 'default',
+    defaultPlaylistGroupId: snapshot.defaultPlaylistGroupId || '',
+    defaultPlaylistKey: snapshot.defaultPlaylistKey || 'default',
+    scheduleEngine: snapshot.scheduleEngine || { enabled: false },
     counts: snapshot.counts || {},
     contentReflect: {
       expectedMs: DEFAULT_PLAYER_STATE_POLL_MS,

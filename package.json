@@ -1,8 +1,8 @@
 {
   "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
-  "version": "1.9.2-visibility-button-modal-fix",
+  "version": "2.0.0-schedule-playlist-mvp",
   "private": true,
-  "description": "LocalVision CMS v1.9.5: device control black mode schedule with version UI fix.",
+  "description": "LocalVision CMS v2.0.0: time-based playlist scheduling MVP with device control and R2 delete hardening.",
   "scripts": {
     "build": "node build-static.js"
   },

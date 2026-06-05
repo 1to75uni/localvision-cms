@@ -1,4 +1,4 @@
-import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromForm } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromForm, defaultPlaylistGroupId, ensureDefaultPlaylistGroup } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -112,6 +112,10 @@ export async function onRequestPost({ request, env }) {
   }
 
   const type = detectType(file)
+  if (side === 'left') await ensureDefaultPlaylistGroup(env, store)
+  const playlistGroupId = side === 'left'
+    ? String(form.get('playlistGroupId') || form.get('playlist_group_id') || defaultPlaylistGroupId(store)).trim()
+    : ''
   const target = contentTargetFromForm(form, side)
   const folder = side === 'right' ? 'stores/_common/right' : `stores/${store}/left`
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
@@ -148,12 +152,13 @@ export async function onRequestPost({ request, env }) {
     targetMode: target.targetMode,
     targetStores: target.targetStores,
     targetStoresJson: target.targetStoresJson,
+    playlistGroupId,
   }
 
   await env.DB.prepare(`
     INSERT INTO contents
-    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json, playlist_group_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     content.id,
     content.store,
@@ -168,7 +173,8 @@ export async function onRequestPost({ request, env }) {
     content.updatedAt,
     content.r2Key,
     content.targetMode,
-    content.targetStoresJson
+    content.targetStoresJson,
+    content.playlistGroupId
   ).run()
 
   let snapshot = null
