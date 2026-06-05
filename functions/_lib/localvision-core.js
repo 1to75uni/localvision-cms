@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.0.0-schedule-playlist-mvp'
+export const LV_CORE_VERSION = 'v2.0.1-schedule-playlist-uiux'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 300000
 export const DEFAULT_COMMAND_POLL_MS = 300000

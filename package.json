@@ -1,8 +1,8 @@
 {
   "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
-  "version": "2.0.0-schedule-playlist-mvp",
+  "version": "2.0.1-schedule-playlist-uiux",
   "private": true,
-  "description": "LocalVision CMS v2.0.0: time-based playlist scheduling MVP with device control and R2 delete hardening.",
+  "description": "LocalVision CMS v2.0.1: left-menu schedule playlist UI/UX with no floating status tabs.",
   "scripts": {
     "build": "node build-static.js"
   },

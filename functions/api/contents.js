@@ -310,7 +310,7 @@ export async function onRequestDelete({ request, env }) {
   const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
-    version: 'v1.9.5-device-control-black-mode-ui-version-fix',
+    version: 'v2.0.1-schedule-playlist-uiux',
     snapshot,
     contentReflect: {
       side: row.side,
