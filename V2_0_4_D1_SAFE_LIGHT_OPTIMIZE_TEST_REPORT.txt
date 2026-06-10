@@ -1,0 +1,46 @@
+LocalVision CMS v2.0.4 D1 Safe Light Optimize - Static Test Report
+
+Date: 2026-06-10 KST
+
+Static checks completed:
+- node --check completed for all JavaScript files under functions/.
+- ZIP integrity test completed with unzip -t.
+
+Normal GET endpoints optimized for D1 read-only behavior:
+- /api/player-state
+- /api/player-config
+- /api/playlist
+- /api/playlist-groups
+- /api/playlist-schedules
+- /api/black-mode
+- /api/app-config
+- /api/contents
+- /api/native-command
+- /api/notices
+- /api/player-errors
+- /api/devices
+- /api/stores
+
+Intentional maintenance/deep endpoints that may still perform repair/snapshot work:
+- /api/repair
+- /api/health?deep=1
+- /api/backup?deep=1
+- /api/snapshot-rebuild
+- /api/r2-sync?sync=1
+
+Important compatibility note:
+- Existing Player/APP/API URLs are preserved.
+- R2 snapshot-first was not introduced as default.
+- POST/PATCH/DELETE paths still keep schema repair and snapshot generation where needed.
+- /api/r2-sync default GET is now read-only R2 scan; use /api/r2-sync?sync=1 for manual D1 sync.
+
+Recommended post-deploy API checks:
+- /api/health
+- /api/health?deep=1   (run once manually after deploy)
+- /api/app-config?id=lv001
+- /api/player-state?store=sulak
+- /api/playlist?store=sulak
+- /api/playlist-groups?store=sulak
+- /api/playlist-schedules?store=sulak
+- /api/black-mode?store=doljjajang
+- /api/notice-active?store=sulak

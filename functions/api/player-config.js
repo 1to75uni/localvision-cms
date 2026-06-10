@@ -1,11 +1,8 @@
 import {
   json,
   LV_CORE_VERSION,
-  ensureCoreSchema,
   readStoreBySlugOrId,
   makePlaylistSnapshot,
-  readPlaylistSnapshotFromR2,
-  writePlaylistSnapshots,
   playlistSnapshotUrl,
   mapDevice,
   dedupeDeviceRows,
@@ -17,8 +14,8 @@ import {
   DEFAULT_CONTENT_CHECK_MS,
   DEFAULT_APP_CONFIG_POLL_MS,
   DEFAULT_PLAYER_STATE_POLL_MS,
+  DEFAULT_BLACK_MODE_POLL_MS,
   DEFAULT_D1_HEARTBEAT_WRITE_SEC,
-  safeErrorMessage,
 } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() { return json({ ok: true }) }
@@ -40,39 +37,26 @@ async function readDevices(env, store) {
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
   const storeParam = url.searchParams.get('store') || url.searchParams.get('id') || url.searchParams.get('appId') || ''
-  const forceRebuild = ['1', 'true', 'yes'].includes(String(url.searchParams.get('rebuild') || '').toLowerCase())
+  // rebuild 파라미터는 기존 URL 호환용으로 허용하지만, v2.0.4 GET에서는 snapshot write를 하지 않습니다.
   if (!storeParam) return json({ ok: false, errorCode: 'LV-STORE-MISSING', error: 'store or id is required' }, 400)
   if (!env.DB) return json({ ok: false, errorCode: 'LV-DB-MISSING', error: 'D1 binding DB is missing' }, 500)
 
   let diagnostics = []
-  try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
+  // v2.0.4: player-config GET에서는 schema repair/PRAGMA를 실행하지 않습니다.
 
   const store = await readStoreBySlugOrId(env, storeParam)
   const resolvedStore = store?.slug || String(storeParam || '').trim().toLowerCase()
   if (!resolvedStore) return json({ ok: false, errorCode: 'LV-STORE-NOT-FOUND', error: 'store not found' }, 404)
 
   let snapshot = null
-  let source = 'r2-playlist-snapshot'
+  let source = 'd1-live-content-sync'
 
-  if (!forceRebuild) {
-    try { snapshot = await readPlaylistSnapshotFromR2(request, env, resolvedStore) } catch (error) { diagnostics.push(`readSnapshot: ${safeErrorMessage(error)}`) }
-  }
-
-  if (!snapshot) {
-    try {
-      const written = await writePlaylistSnapshots(request, env, resolvedStore)
-      snapshot = written.snapshot
-      source = 'd1-built-and-snapshotted'
-      diagnostics.push(...(written.results || []).filter((r) => !r.ok).map((r) => `snapshotWrite:${r.reason || r.key}`))
-    } catch (error) {
-      diagnostics.push(`writeSnapshot: ${safeErrorMessage(error)}`)
-      try {
-        snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
-        source = 'd1-live-fallback'
-      } catch (inner) {
-        return json({ ok: false, errorCode: 'LV-PLAYLIST-BUILD-FAILED', error: safeErrorMessage(inner), diagnostics }, 200)
-      }
-    }
+  try {
+    snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
+    if (snapshot?.playlists) snapshot = { ...snapshot, mode: 'playlist-snapshot-live-readonly' }
+  } catch (error) {
+    diagnostics.push(`liveContentSync: ${String(error?.message || error).slice(0, 500)}`)
+    return json({ ok: false, errorCode: 'LV-PLAYLIST-BUILD-FAILED', error: String(error?.message || error).slice(0, 500), diagnostics }, 200)
   }
 
   const devices = await readDevices(env, resolvedStore)
@@ -80,7 +64,7 @@ export async function onRequestGet({ request, env }) {
     ok: true,
     version: LV_CORE_VERSION,
     endpoint: '/api/player-config',
-    mode: 'snapshot-first',
+    mode: 'd1-live-readonly',
     source,
     store: store || { slug: resolvedStore, name: resolvedStore, status: '운영중' },
     playlistVersion: snapshot.playlistVersion || snapshot.version || '',
@@ -101,9 +85,10 @@ export async function onRequestGet({ request, env }) {
       playerStatePollMs: DEFAULT_PLAYER_STATE_POLL_MS,
       commandPoll: DEFAULT_COMMAND_POLL_MS,
       noticePollMs: DEFAULT_NOTICE_POLL_MS,
+      blackModePollMs: DEFAULT_BLACK_MODE_POLL_MS,
       contentCheck: DEFAULT_CONTENT_CHECK_MS,
       appConfigPollMs: DEFAULT_APP_CONFIG_POLL_MS,
-      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 600),
+      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 1800),
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
     },
     diagnostics,

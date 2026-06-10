@@ -210,15 +210,16 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.0.2-schedule-api-503-fix'
+export const LV_CORE_VERSION = 'v2.0.5-d1-polling-diet-safe'
 export const DEFAULT_CONTENT_DURATION = 20
-export const DEFAULT_HEARTBEAT_MS = 300000
-export const DEFAULT_COMMAND_POLL_MS = 300000
-export const DEFAULT_NOTICE_POLL_MS = 60000
-export const DEFAULT_CONTENT_CHECK_MS = 480000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 300
+export const DEFAULT_HEARTBEAT_MS = 600000
+export const DEFAULT_COMMAND_POLL_MS = 600000
+export const DEFAULT_NOTICE_POLL_MS = 600000
+export const DEFAULT_CONTENT_CHECK_MS = 600000
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
-export const DEFAULT_PLAYER_STATE_POLL_MS = 480000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 600000
+export const DEFAULT_BLACK_MODE_POLL_MS = 600000
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -308,25 +309,47 @@ export function playerBaseUrl(request, env) {
   return 'https://localvision-player.pages.dev'
 }
 
+function applyOrNormalizePollParam(url, key, value, legacyValues = []) {
+  const next = String(value)
+  const current = url.searchParams.get(key)
+  if (current === null || current === '') {
+    url.searchParams.set(key, next)
+    return
+  }
+  // v2.0.5: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
+  // 단, 운영자가 명시적으로 넣은 비표준 커스텀 값은 건드리지 않아 현장 URL 호환성을 유지합니다.
+  if (legacyValues.map(String).includes(String(current))) url.searchParams.set(key, next)
+}
+
 function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
   const cmsOrigin = new URL(request.url).origin
   const normalizedAppId = normalizeLvId(appId)
   if (storeSlug && !url.searchParams.has('store')) url.searchParams.set('store', storeSlug)
   if (normalizedAppId && !url.searchParams.has('id')) url.searchParams.set('id', normalizedAppId)
   if (!url.searchParams.has('apiBase')) url.searchParams.set('apiBase', cmsOrigin)
-  if (!url.searchParams.has('refresh')) url.searchParams.set('refresh', String(DEFAULT_CONTENT_CHECK_MS))
-  if (!url.searchParams.has('heartbeat')) url.searchParams.set('heartbeat', String(DEFAULT_HEARTBEAT_MS))
-  if (!url.searchParams.has('commandPoll')) url.searchParams.set('commandPoll', String(DEFAULT_COMMAND_POLL_MS))
-  if (!url.searchParams.has('statePoll')) url.searchParams.set('statePoll', String(DEFAULT_PLAYER_STATE_POLL_MS))
-  if (!url.searchParams.has('appConfigPoll')) url.searchParams.set('appConfigPoll', String(DEFAULT_APP_CONFIG_POLL_MS))
-  if (!url.searchParams.has('noticePollMs')) url.searchParams.set('noticePollMs', String(DEFAULT_NOTICE_POLL_MS))
+
+  const pollLegacy = ['60000', '180000', '240000', '300000', '480000', '900000']
+  applyOrNormalizePollParam(url, 'refresh', DEFAULT_CONTENT_CHECK_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'contentCheck', DEFAULT_CONTENT_CHECK_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'heartbeat', DEFAULT_HEARTBEAT_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'commandPoll', DEFAULT_COMMAND_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'commandPollMs', DEFAULT_COMMAND_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'statePoll', DEFAULT_PLAYER_STATE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'playerStatePoll', DEFAULT_PLAYER_STATE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'noticePollMs', DEFAULT_NOTICE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'noticePoll', DEFAULT_NOTICE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'blackModePollMs', DEFAULT_BLACK_MODE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'blackModePoll', DEFAULT_BLACK_MODE_POLL_MS, pollLegacy)
+  applyOrNormalizePollParam(url, 'appConfigPoll', DEFAULT_APP_CONFIG_POLL_MS, ['300000', '600000', '900000'])
+  applyOrNormalizePollParam(url, 'configPoll', DEFAULT_APP_CONFIG_POLL_MS, ['300000', '600000', '900000'])
+
   if (!url.searchParams.has('cacheMax')) url.searchParams.set('cacheMax', '20')
   if (!url.searchParams.has('bundleMode')) url.searchParams.set('bundleMode', 'cache')
   if (!url.searchParams.has('cacheAll')) url.searchParams.set('cacheAll', '1')
   if (!url.searchParams.has('videoMode')) url.searchParams.set('videoMode', 'cache')
   if (!url.searchParams.has('cacheVia')) url.searchParams.set('cacheVia', 'api')
   if (!url.searchParams.has('activateWhenCached')) url.searchParams.set('activateWhenCached', '1')
-  // Player v1.7.6 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
+  // Player v1.7.6+ 기본 운영값: public R2 playlist.json 직접 fetch를 끄고 API payload playlists를 우선 사용합니다.
   if (!url.searchParams.has('snapshotFetch')) url.searchParams.set('snapshotFetch', '0')
   if (!url.searchParams.has('restart')) url.searchParams.set('restart', '09:30')
   if (!url.searchParams.has('restartMode')) url.searchParams.set('restartMode', 'reload')
@@ -1152,10 +1175,11 @@ export async function ensureDefaultPlaylistGroups(env) {
   return { ok: true, stores: [...storeSet], count: storeSet.size }
 }
 
-export async function readPlaylistGroups(env, store = '') {
+export async function readPlaylistGroups(env, store = '', options = {}) {
   const cleanStore = cleanSlug(store || '')
   if (!env.DB || !cleanStore) return []
-  await ensureDefaultPlaylistGroup(env, cleanStore)
+  // v2.0.4: 기본값은 read-only입니다. GET/player-state 조회 중 INSERT/UPDATE 보정을 만들지 않습니다.
+  if (options.ensureDefault === true) await ensureDefaultPlaylistGroup(env, cleanStore)
   const { results } = await env.DB.prepare(`
     SELECT id, store, name, slug, is_default AS isDefault, status, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
     FROM playlist_groups
@@ -1178,12 +1202,13 @@ export async function readPlaylistSchedules(env, store = '') {
   return (results || []).map(mapPlaylistSchedule)
 }
 
-export async function readContentsForPlaylistGroup(env, store = '', playlistGroupId = '') {
+export async function readContentsForPlaylistGroup(env, store = '', playlistGroupId = '', options = {}) {
   if (!env.DB) return []
   const cleanStore = cleanSlug(store || '')
   const groupId = String(playlistGroupId || defaultPlaylistGroupId(cleanStore)).trim()
   if (!cleanStore || !groupId) return []
-  await ensureDefaultPlaylistGroup(env, cleanStore)
+  // v2.0.4: 기본값은 read-only입니다. 쓰기 작업에서만 명시적으로 기본 그룹을 보정합니다.
+  if (options.ensureDefault === true) await ensureDefaultPlaylistGroup(env, cleanStore)
   const { results } = await env.DB.prepare(`
     SELECT id, store, side, type, title, duration, status,
            file_name AS fileName, url, sort_order AS sortOrder,
@@ -1287,12 +1312,9 @@ export async function readContentsForPlaylist(env, store = '', side = 'left', vi
   try {
     ;({ results } = await readWithTargetColumns())
   } catch (error) {
-    // v1.9.2 배포 직후 D1에 target 컬럼이 아직 없을 수 있습니다.
-    // 이때 API가 죽지 않도록 schema를 한 번 보강하고, 실패하면 legacy SELECT로 전체 노출 처리합니다.
+    // v2.0.4: GET 재생 조회에서는 ensureCoreSchema/PRAGMA를 실행하지 않습니다.
+    // target 컬럼이 없는 오래된 D1이면 읽기 전용 legacy SELECT로만 fallback합니다.
     try {
-      await ensureCoreSchema(env)
-      ;({ results } = await readWithTargetColumns())
-    } catch {
       const legacy = await env.DB.prepare(`
         SELECT id, store, side, type, title, duration, status,
                file_name AS fileName, url, sort_order AS sortOrder,
@@ -1304,6 +1326,16 @@ export async function readContentsForPlaylist(env, store = '', side = 'left', vi
         ORDER BY sort_order ASC, updated_at DESC
       `).bind(targetStore, side, side, defaultPlaylistGroupId(targetStore)).all()
       results = legacy.results || []
+    } catch {
+      const ultraLegacy = await env.DB.prepare(`
+        SELECT id, store, side, type, title, duration, status,
+               file_name AS fileName, url, sort_order AS sortOrder,
+               updated_at AS updatedAt, r2_key AS r2Key
+        FROM contents
+        WHERE store = ? AND side = ? AND status = '사용중'
+        ORDER BY sort_order ASC, updated_at DESC
+      `).bind(targetStore, side).all()
+      results = ultraLegacy.results || []
     }
   }
 
@@ -1474,8 +1506,8 @@ export async function safeAll(env, sql, binds = []) {
 }
 
 export function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 600)
-  return Number.isFinite(value) && value > 0 ? value : 600
+  const value = Number(env.ONLINE_TTL_SEC || 1800)
+  return Number.isFinite(value) && value > 0 ? value : 1800
 }
 
 export function parseLastSeenMs(value, nowMs = Date.now()) {

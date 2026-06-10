@@ -121,10 +121,16 @@ function mapRow(row = null) {
   }
 }
 
-async function readMode(env, store) {
-  await ensureBlackModeSchema(env)
-  const row = await env.DB.prepare(`SELECT * FROM black_modes WHERE store = ? LIMIT 1`).bind(store).first()
-  return mapRow(row ? { ...row, store } : { store })
+async function readMode(env, store, options = {}) {
+  // v2.0.4: GET에서는 black_modes 테이블/인덱스 보정을 하지 않습니다.
+  // 테이블이 아직 없으면 휴무모드 OFF로 안전하게 응답합니다.
+  if (options.ensureSchema === true) await ensureBlackModeSchema(env)
+  try {
+    const row = await env.DB.prepare(`SELECT * FROM black_modes WHERE store = ? LIMIT 1`).bind(store).first()
+    return mapRow(row ? { ...row, store } : { store })
+  } catch {
+    return mapRow({ store })
+  }
 }
 
 async function upsertMode(env, store, patch = {}) {

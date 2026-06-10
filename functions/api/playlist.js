@@ -1,10 +1,8 @@
 import {
   json,
   LV_CORE_VERSION,
-  ensureCoreSchema,
   readContentsForPlaylist,
   readPlaylistSnapshotFromR2,
-  writePlaylistSnapshots,
   playlistSnapshotUrl,
   nowUtcIso,
   nowKstString,
@@ -64,7 +62,7 @@ export async function onRequestGet({ request, env }) {
   if (side !== 'right' && !store) return json({ ok: false, error: 'store is required', endpoint: '/api/playlist' }, 400)
   if (!env.DB) return json({ ok: true, degraded: true, endpoint: '/api/playlist', source: 'safe-empty-no-db', store, side, items: side === 'bundle' ? undefined : [], playlists: side === 'right' ? { right: [] } : { left: [], right: [] }, counts: { left: 0, right: 0 }, diagnostics: ['D1 binding DB is missing'] })
 
-  try { await ensureCoreSchema(env) } catch (error) { diagnostics.push(`ensureCoreSchema: ${safeErrorMessage(error)}`) }
+  // v2.0.4: playlist GET은 read-only D1 live 조회만 수행합니다. schema repair와 snapshot write는 하지 않습니다.
 
   // v1.8.6: right 콘텐츠는 매장별 노출대상 필터가 있을 수 있으므로 기본은 D1 live로 정확하게 계산합니다.
   // snapshot=1을 명시한 진단 요청에서만 R2 bundle snapshot을 우선 사용합니다.
@@ -83,13 +81,7 @@ export async function onRequestGet({ request, env }) {
   const left = side === 'right' ? [] : await safeReadItems(env, cleanStore, 'left', diagnostics)
   const right = await safeReadItems(env, cleanStore || '_common', 'right', diagnostics, cleanStore)
 
-  // R2 snapshot 쓰기는 운영 편의 기능입니다. 실패해도 Player/CMS API는 live payload를 반환합니다.
-  if (side !== 'right') {
-    try {
-      const result = await writePlaylistSnapshots(request, env, store)
-      if (!result?.ok) diagnostics.push(`writeSnapshot: ${safeErrorMessage(result?.reason || 'not ok')}`)
-    } catch (error) { diagnostics.push(`writeSnapshot: ${safeErrorMessage(error)}`) }
-  }
+  // v2.0.4: GET에서 R2 snapshot 재생성 금지. snapshot은 POST/PATCH/DELETE 또는 수동 rebuild가 담당합니다.
 
   try {
     return json(responsePayload(request, env, { store, side, source: diagnostics.length ? 'd1-live-fallback-with-diagnostics' : 'd1-live-fallback', left, right, diagnostics }))

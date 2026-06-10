@@ -1,4 +1,4 @@
-import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromBody, parseTargetStores, normalizeTargetMode, defaultPlaylistGroupId, ensureDefaultPlaylistGroup } from '../_lib/localvision-core.js'
+import { ensureCoreSchema, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, r2KeyFromUrl, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromBody, parseTargetStores, normalizeTargetMode, defaultPlaylistGroupId, ensureDefaultPlaylistGroup, LV_CORE_VERSION } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -43,37 +43,61 @@ function mapContent(row = {}) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  // v1.8.6: right 콘텐츠 노출대상 컬럼이 없던 기존 D1도 깨지지 않도록 1회 보강합니다.
-  await ensureCoreSchema(env)
+  // v2.0.4: 콘텐츠 목록 GET은 read-only입니다. schema repair/PRAGMA는 실행하지 않습니다.
   const url = new URL(request.url)
   const store = url.searchParams.get('store')
   const side = url.searchParams.get('side')
   const playlistGroupId = String(url.searchParams.get('playlistGroupId') || url.searchParams.get('playlist_group_id') || '').trim()
 
-  let sql = `
-    SELECT
-      id, store, side, type, title, duration, status,
-      file_name AS fileName,
-      url,
-      sort_order AS sortOrder,
-      updated_at AS updatedAt,
-      r2_key AS r2Key,
-      target_mode AS targetMode,
-      target_stores_json AS targetStoresJson,
-      playlist_group_id AS playlistGroupId
-    FROM contents
-  `
   const params = []
   const where = []
-
   if (store) { where.push('store = ?'); params.push(store) }
   if (side) { where.push('side = ?'); params.push(side) }
   if (playlistGroupId) { where.push('playlist_group_id = ?'); params.push(playlistGroupId) }
 
-  if (where.length) sql += ` WHERE ${where.join(' AND ')}`
-  sql += ` ORDER BY side ASC, sort_order ASC, updated_at DESC`
+  async function runFullSelect() {
+    let sql = `
+      SELECT
+        id, store, side, type, title, duration, status,
+        file_name AS fileName,
+        url,
+        sort_order AS sortOrder,
+        updated_at AS updatedAt,
+        r2_key AS r2Key,
+        target_mode AS targetMode,
+        target_stores_json AS targetStoresJson,
+        playlist_group_id AS playlistGroupId
+      FROM contents
+    `
+    if (where.length) sql += ` WHERE ${where.join(' AND ')}`
+    sql += ` ORDER BY side ASC, sort_order ASC, updated_at DESC`
+    return await env.DB.prepare(sql).bind(...params).all()
+  }
 
-  const { results } = await env.DB.prepare(sql).bind(...params).all()
+  async function runLegacySelect() {
+    const legacyWhere = []
+    const legacyParams = []
+    if (store) { legacyWhere.push('store = ?'); legacyParams.push(store) }
+    if (side) { legacyWhere.push('side = ?'); legacyParams.push(side) }
+    // playlist_group_id 컬럼이 없던 DB에서는 그룹 필터를 적용하지 않고 전체 목록을 보여줍니다.
+    let sql = `
+      SELECT
+        id, store, side, type, title, duration, status,
+        file_name AS fileName,
+        url,
+        sort_order AS sortOrder,
+        updated_at AS updatedAt,
+        r2_key AS r2Key
+      FROM contents
+    `
+    if (legacyWhere.length) sql += ` WHERE ${legacyWhere.join(' AND ')}`
+    sql += ` ORDER BY side ASC, sort_order ASC, updated_at DESC`
+    return await env.DB.prepare(sql).bind(...legacyParams).all()
+  }
+
+  let results = []
+  try { ;({ results } = await runFullSelect()) }
+  catch { ;({ results } = await runLegacySelect()) }
   return json({ ok: true, contents: dedupeContentsRows(results || []).map(mapContent) })
 }
 
@@ -310,7 +334,7 @@ export async function onRequestDelete({ request, env }) {
   const snapDoc = snapshot?.snapshot || snapshot || {}
   return json({
     ok: true,
-    version: 'v2.0.2-schedule-api-503-fix',
+    version: LV_CORE_VERSION,
     snapshot,
     contentReflect: {
       side: row.side,

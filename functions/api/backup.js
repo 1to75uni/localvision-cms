@@ -145,7 +145,7 @@ export async function onRequestGet({ request, env }) {
       DB: Boolean(env.DB),
       MEDIA: Boolean(env.MEDIA),
       R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
-      ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
+      ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 1800),
     },
     serverNowUtc: now,
     serverNowKst: nowKst,

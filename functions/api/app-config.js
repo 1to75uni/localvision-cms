@@ -13,6 +13,7 @@ import {
   DEFAULT_D1_HEARTBEAT_WRITE_SEC,
   DEFAULT_APP_CONFIG_POLL_MS,
   DEFAULT_PLAYER_STATE_POLL_MS,
+  DEFAULT_BLACK_MODE_POLL_MS,
   LV_CORE_VERSION,
   nowUtcIso,
   nowKstString,
@@ -54,9 +55,10 @@ function configResponse(request, env, store, diagnostics = []) {
       commandPoll: DEFAULT_COMMAND_POLL_MS,
       noticePollMs: DEFAULT_NOTICE_POLL_MS,
       playerStatePollMs: DEFAULT_PLAYER_STATE_POLL_MS,
+      blackModePollMs: DEFAULT_BLACK_MODE_POLL_MS,
       appConfigPollMs: DEFAULT_APP_CONFIG_POLL_MS,
       contentCheck: DEFAULT_CONTENT_CHECK_MS,
-      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 600),
+      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 1800),
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
       heartbeatWritePolicy: 'd1-write-every-10-min-or-status-change',
       defaultDurationSec: 20,
@@ -115,7 +117,8 @@ export async function onRequestGet({ request, env }) {
   if (!lookup) return json({ ok: false, error: 'id is required. example: /api/app-config?id=lv001', endpoint: '/api/app-config' }, 400)
   if (!env.DB) return json({ ok: true, degraded: true, status: 'DB_MISSING', id: normalizeLvId(lookup) || lookup, active: false, playerUrl: '', diagnostics: ['D1 binding DB is missing'] })
   try {
-    await ensureAppConfigSchema(env, diagnostics)
+    // v2.0.4: APP/Player가 자주 호출하는 GET에서는 schema repair/PRAGMA를 실행하지 않습니다.
+    // 스키마 보강은 POST/PATCH, /api/repair, /api/health?deep=1에서만 수행합니다.
     const store = await safeFindStore(env, lookup, diagnostics)
     if (!store) {
       return json({ ok: false, status: 'APP_ID_NOT_FOUND', endpoint: '/api/app-config', id: normalizeLvId(lookup) || lookup, message: '등록된 APP ID 또는 store가 없습니다.', diagnostics }, 404)

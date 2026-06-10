@@ -1,8 +1,8 @@
 {
-  "name": "localvision-cms-v1-9-2-visibility-button-modal-fix",
-  "version": "2.0.2-schedule-api-503-fix",
+  "name": "localvision-cms-v2-0-5-d1-polling-diet-safe",
+  "version": "2.0.5-d1-polling-diet-safe",
   "private": true,
-  "description": "LocalVision CMS v2.0.2: schedule API 503 fix with lightweight schedule schema guard.",
+  "description": "LocalVision CMS v2.0.5: D1 polling diet safe; 10-min player polling defaults, remove heavy CMS backup/schedule auto polling while keeping API compatibility.",
   "scripts": {
     "build": "node build-static.js"
   },

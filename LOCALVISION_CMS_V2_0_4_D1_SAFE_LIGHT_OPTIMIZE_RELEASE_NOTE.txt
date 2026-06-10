@@ -1,0 +1,50 @@
+LocalVision CMS v2.0.4 D1 Safe Light Optimize
+
+목적
+- 기존 D1 live 구조, 기존 API 주소, APP/Player 호환을 유지합니다.
+- R2 snapshot-first 전면 도입 없이 GET 조회 중 발생하던 불필요한 D1 보정/쓰기 작업을 제거합니다.
+
+핵심 변경
+1. /api/player-state GET
+   - writePlaylistSnapshots 제거
+   - R2 snapshot-first 재생성 제거
+   - 기존 payload 구조는 유지하고 D1 live read-only로 최신 재생목록/스케줄/공지/명령을 반환
+
+2. /api/playlist GET
+   - ensureCoreSchema 제거
+   - GET 중 snapshot write 제거
+   - 기본은 D1 live read-only 조회 유지
+
+3. /api/playlist-groups GET, /api/playlist-schedules GET
+   - ensureScheduleSchema 제거
+   - ensureDefaultPlaylistGroup 제거
+   - GET은 read-only 목록 조회만 수행
+
+4. /api/black-mode GET
+   - ensureBlackModeSchema 제거
+   - black_modes 테이블이 없으면 휴무모드 OFF로 안전 응답
+
+5. /api/app-config GET, /api/player-config GET, /api/contents GET, /api/native-command GET
+   - GET에서 schema repair/PRAGMA 제거
+   - 필요한 경우 read-only fallback 사용
+
+유지 사항
+- POST/PATCH/DELETE의 schema 보정 및 snapshot 생성은 유지
+- /api/repair 유지
+- /api/health?deep=1 유지
+- 기존 APP/Player/API URL 호환 유지
+- 미디어 URL 구조 변경 없음
+
+배포 후 확인
+- Cloudflare D1 상위 쿼리에서 PRAGMA table_info, CREATE INDEX IF NOT EXISTS, INSERT OR IGNORE playlist_groups, UPDATE contents SET playlist_group_id 빈도가 줄어야 합니다.
+- 정상 상위 쿼리는 단순 SELECT 및 heartbeat UPDATE 중심이어야 합니다.
+
+권장 테스트 매장
+- sulak: 플레이리스트 그룹/스케줄
+- googgimin: 복수 그룹
+- doljjajang: black-mode
+- ogari: 일반 매장
+
+관리/복구용 예외
+- /api/repair, /api/health?deep=1, /api/backup?deep=1, /api/snapshot-rebuild 는 의도적으로 보정/재생성 작업을 수행할 수 있습니다.
+- /api/r2-sync 는 v2.0.4부터 기본 GET은 R2 read-only scan이며, D1 동기화는 /api/r2-sync?sync=1 로 명시했을 때만 실행합니다.

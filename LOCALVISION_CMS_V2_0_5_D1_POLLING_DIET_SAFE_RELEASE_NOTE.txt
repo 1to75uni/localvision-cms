@@ -1,0 +1,58 @@
+LocalVision CMS v2.0.5_D1_POLLING_DIET_SAFE
+================================================
+
+목적
+- 기존 CMS/Player/APP 호환 구조는 유지하면서 D1 read/write 사용량을 낮추는 안정 패치입니다.
+- R2 snapshot-first 전면 도입, API 삭제, Player 구조 전면 변경, APP 재설치는 포함하지 않습니다.
+
+핵심 변경
+1. Player URL 기본 polling 값 조정
+   - heartbeat=600000
+   - commandPoll=600000
+   - commandPollMs=600000
+   - noticePollMs=600000
+   - noticePoll=600000
+   - blackModePollMs=600000
+   - blackModePoll=600000
+   - statePoll=600000
+   - playerStatePoll=600000
+   - contentCheck=600000
+   - refresh=600000
+   - appConfigPoll=1800000
+   - configPoll=1800000
+
+2. 기존 저장 Player URL의 레거시 polling 값 자동 보정
+   - 기존 URL에 60000 / 300000 / 480000 / 900000 등의 과다호출 기본값이 있으면 600000으로 보정합니다.
+   - 운영자가 넣은 비표준 커스텀 값은 최대한 보존합니다.
+
+3. 온라인 판정 기준 조정
+   - heartbeat 10분화에 맞춰 기본 ONLINE_TTL_SEC fallback을 1800초(30분)로 조정했습니다.
+   - D1 heartbeat write 기본 throttle을 600초(10분)로 조정했습니다.
+
+4. CMS 관리자 화면 polling diet
+   - React CMS의 /api/backup 30초 자동 호출을 제거했습니다.
+   - 최초 진입 시 /api/backup 1회 로드만 유지합니다.
+   - 이후 자동 갱신은 /api/devices?lite=1 을 3분마다 호출해 단말기 상태만 가볍게 갱신합니다.
+
+5. 스케줄 관리자 polling diet
+   - lv-schedule-manager의 setInterval(loadAll, 15000)을 제거했습니다.
+   - 스케줄 패널 최초 진입, 업체 변경, 저장/삭제/수정, 수동 새로고침 시에만 데이터를 다시 읽습니다.
+   - 스케줄 패널 상단에 수동 새로고침 버튼을 추가했습니다.
+
+6. /api/devices?lite=1 추가
+   - CMS 상태 자동 갱신용 경량 모드입니다.
+   - stores/contents/notices 전체 조회 없이 devices 상태만 반환합니다.
+
+유지한 것
+- 기존 API 주소 유지
+- /api/player-state D1 live 구조 유지
+- /api/notice-active, /api/black-mode, /api/player-command 주소 유지
+- /api/backup 수동/초기 로딩 기능 유지
+- /api/repair, /api/health?deep=1 유지
+- R2 snapshot-first 전면 도입 없음
+- APP/Player 재설치 필요 없음
+
+주의점
+- 공지/휴무모드/명령 반영 체감은 최대 10분까지 늘어날 수 있습니다.
+- 기존 TV가 이미 실행 중이면 /api/app-config 다음 확인 또는 TV 새로고침 후 새 polling URL이 반영됩니다.
+- Cloudflare D1 상위 쿼리에서 /api/backup성 전체 SELECT, notice/black-mode 1분 조회가 줄어드는지 확인해야 합니다.

@@ -7,6 +7,7 @@ import {
   readPlaylistGroups,
   writePlaylistSnapshots,
   DEFAULT_PLAYER_STATE_POLL_MS,
+  LV_CORE_VERSION,
 } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() { return json({ ok: true }) }
@@ -38,11 +39,10 @@ async function withCounts(env, groups = []) {
 
 async function handleGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureScheduleSchema(env)
+  // v2.0.4: GET은 read-only입니다. schema/default-group 보정은 POST/PATCH/DELETE 또는 repair에서만 실행합니다.
   const url = new URL(request.url)
   const store = cleanSlug(url.searchParams.get('store') || '')
   if (!store) return json({ ok: false, error: 'store is required' }, 400)
-  await ensureDefaultPlaylistGroup(env, store)
   const groups = await withCounts(env, await readPlaylistGroups(env, store))
   return json({ ok: true, endpoint: '/api/playlist-groups', store, groups })
 }
@@ -172,7 +172,7 @@ function scheduleApiError(error, endpoint = '/api/playlist-groups') {
   return json({
     ok: false,
     endpoint,
-    version: 'v2.0.2-schedule-api-503-fix',
+    version: LV_CORE_VERSION,
     errorCode: 'LV-SCHEDULE-API-ERROR',
     error: String(error?.message || error),
     message: '시간대별 송출 API 오류가 발생했습니다. JSON 응답은 유지되므로 화면에서 원인을 확인할 수 있습니다.',

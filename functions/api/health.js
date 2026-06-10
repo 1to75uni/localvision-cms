@@ -1,4 +1,4 @@
-import { json, LV_CORE_VERSION, ensureCoreSchema, listR2Objects, DEFAULT_HEARTBEAT_MS, DEFAULT_COMMAND_POLL_MS, DEFAULT_NOTICE_POLL_MS, nowUtcIso, nowKstString } from '../_lib/localvision-core.js'
+import { json, LV_CORE_VERSION, ensureCoreSchema, listR2Objects, DEFAULT_HEARTBEAT_MS, DEFAULT_COMMAND_POLL_MS, DEFAULT_NOTICE_POLL_MS, DEFAULT_BLACK_MODE_POLL_MS, DEFAULT_PLAYER_STATE_POLL_MS, DEFAULT_CONTENT_CHECK_MS, DEFAULT_APP_CONFIG_POLL_MS, DEFAULT_D1_HEARTBEAT_WRITE_SEC, nowUtcIso, nowKstString } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
   return json({ ok: true })
@@ -49,13 +49,18 @@ export async function onRequestGet({ request, env }) {
     DB: dbOk,
     MEDIA: mediaOk,
     R2_PUBLIC_BASE: Boolean(env.R2_PUBLIC_BASE),
-    ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 600),
+    ONLINE_TTL_SEC: Number(env.ONLINE_TTL_SEC || 1800),
     heartbeatMs: DEFAULT_HEARTBEAT_MS,
     commandPollMs: DEFAULT_COMMAND_POLL_MS,
     noticePollMs: DEFAULT_NOTICE_POLL_MS,
+    blackModePollMs: DEFAULT_BLACK_MODE_POLL_MS,
+    playerStatePollMs: DEFAULT_PLAYER_STATE_POLL_MS,
+    contentCheckMs: DEFAULT_CONTENT_CHECK_MS,
+    appConfigPollMs: DEFAULT_APP_CONFIG_POLL_MS,
+    d1HeartbeatWriteSec: DEFAULT_D1_HEARTBEAT_WRITE_SEC,
     serverNowUtc: nowUtcIso(),
     serverNowKst: nowKstString(),
-    heartbeatWritePolicy: 'heartbeat-d1-write-every-5-min-or-status-change',
+    heartbeatWritePolicy: 'heartbeat-d1-write-every-10-min-or-status-change',
     r2SampleCount: deep ? r2SampleCount : null,
     r2SampleMode: deep ? 'checked' : 'skipped-in-lite-use-deep=1',
     checks,

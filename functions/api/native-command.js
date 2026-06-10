@@ -1,7 +1,6 @@
 import {
   json,
   LV_CORE_VERSION,
-  ensureCoreSchema,
   findStoreForAppConfig,
   cleanSlug,
   dedupeDeviceRows,
@@ -30,7 +29,7 @@ function normalizeCommand(value) {
 
 export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
+  // v2.0.4: APP Shell 명령 조회 GET에서는 schema repair/PRAGMA를 실행하지 않습니다.
 
   const url = new URL(request.url)
   const appId = String(url.searchParams.get('id') || url.searchParams.get('appId') || '').trim()

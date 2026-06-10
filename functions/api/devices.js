@@ -69,10 +69,12 @@ function isHeartbeatOnlyPatch(body, incoming) {
     && !String(body.deviceCode || body.device_code || '').trim()
 }
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  // v1.8.2: CMS 상태 조회는 schema repair/중복 정리를 매번 실행하지 않습니다.
-  // 필요 시 /api/repair를 수동 실행합니다.
+  // v2.0.5: CMS 자동 polling은 /api/backup 대신 devices lite만 쓰도록 분리합니다.
+  // GET에서는 schema repair/중복 정리를 매번 실행하지 않습니다. 필요 시 /api/repair를 수동 실행합니다.
+  const url = new URL(request.url)
+  const lite = ['1', 'true', 'yes'].includes(String(url.searchParams.get('lite') || '').toLowerCase())
 
   const { results } = await env.DB.prepare(`
     SELECT
@@ -87,7 +89,29 @@ export async function onRequestGet({ env }) {
     ORDER BY created_at DESC
   `).all()
 
-  return json({ ok: true, version: LV_CORE_VERSION, devices: dedupeDeviceRows(results || [], env).map((row) => mapDevice(row, env)) })
+  const devices = dedupeDeviceRows(results || [], env).map((row) => {
+    const mapped = mapDevice(row, env)
+    if (!lite) return mapped
+    return {
+      id: mapped.id,
+      store: mapped.store,
+      name: mapped.name,
+      role: mapped.role,
+      online: mapped.online,
+      onlineTtlSec: mapped.onlineTtlSec,
+      lastSeen: mapped.lastSeen,
+      lastSeenAt: mapped.lastSeenAt,
+      lastSeenSecondsAgo: mapped.lastSeenSecondsAgo,
+      lastSeenAgo: mapped.lastSeenAgo,
+      offlineReason: mapped.offlineReason,
+      app: mapped.app,
+      deviceCode: mapped.deviceCode,
+      lastCommand: mapped.lastCommand,
+      commandAt: mapped.commandAt,
+    }
+  })
+
+  return json({ ok: true, version: LV_CORE_VERSION, mode: lite ? 'lite' : 'full', devices })
 }
 
 export async function onRequestPost({ request, env }) {

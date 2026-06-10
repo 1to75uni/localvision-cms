@@ -1,7 +1,6 @@
 import {
   json,
   LV_CORE_VERSION,
-  ensureCoreSchema,
   mapDevice,
   dedupeDeviceRows,
   nowUtcIso,
@@ -17,14 +16,13 @@ import {
   DEFAULT_CONTENT_CHECK_MS,
   DEFAULT_APP_CONFIG_POLL_MS,
   DEFAULT_PLAYER_STATE_POLL_MS,
+  DEFAULT_BLACK_MODE_POLL_MS,
   DEFAULT_D1_HEARTBEAT_WRITE_SEC,
   parseLastSeenMs,
   onlineTtlSec,
   cleanSlug,
   readStoreBySlugOrId,
-  readPlaylistSnapshotFromR2,
   makePlaylistSnapshot,
-  writePlaylistSnapshots,
   playlistSnapshotUrl,
   safeErrorMessage,
 } from '../_lib/localvision-core.js'
@@ -205,7 +203,7 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url)
   const storeSlug = url.searchParams.get('store') || ''
   const appId = url.searchParams.get('id') || url.searchParams.get('appId') || ''
-  const forceRebuild = ['1', 'true', 'yes'].includes(String(url.searchParams.get('rebuild') || '').toLowerCase())
+  // rebuild 파라미터는 기존 URL 호환용으로 허용하지만, v2.0.4 GET에서는 snapshot write를 하지 않습니다.
   if (!storeSlug && !appId) return json({ ok: false, errorCode: 'LV-STORE-MISSING', error: 'store or id is required' }, 400)
   if (!env.DB) return json({ ok: false, errorCode: 'LV-DB-MISSING', error: 'D1 binding DB is missing' }, 500)
 
@@ -219,39 +217,29 @@ export async function onRequestGet({ request, env }) {
   if (!resolvedStore) return json({ ok: false, errorCode: 'LV-STORE-NOT-FOUND', error: 'store not found' }, 404)
 
   let snapshot = null
-  let source = 'r2-playlist-snapshot'
-  if (!forceRebuild) {
-    try { snapshot = await readPlaylistSnapshotFromR2(request, env, resolvedStore) } catch (error) { diagnostics.push(`readSnapshot: ${safeErrorMessage(error)}`) }
-  }
-  if (!snapshot) {
-    try {
-      const written = await writePlaylistSnapshots(request, env, resolvedStore)
-      snapshot = written.snapshot
-      source = 'd1-built-and-snapshotted'
-    } catch (error) {
-      diagnostics.push(`writeSnapshot: ${safeErrorMessage(error)}`)
-      snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
-      source = 'd1-live-fallback'
-    }
-  }
+  let source = 'd1-live-content-sync'
 
-  // v1.8.3 핵심 보완:
-  // TV가 꺼졌다 켜지거나 8분 주기로 /api/player-state를 확인할 때
-  // R2에 저장된 예전 bundle snapshot만 믿지 않고, D1의 최신 left + 최신 _common/right를 다시 합쳐서 내려줍니다.
-  // 특히 오른쪽 공통 콘텐츠는 모든 매장이 공유하므로, 매장별 bundle이 낡아도 항상 최신 _common/right가 반영됩니다.
+  // v2.0.4: player-state GET은 기존 호환 payload를 유지하되 R2 snapshot-first/write를 하지 않습니다.
+  // 매 호출에서 필요한 최신 D1 live 데이터만 읽어서 반환합니다.
   try {
-    const liveSnapshot = await makePlaylistSnapshot(request, env, resolvedStore)
-    if (liveSnapshot?.playlists) {
-      snapshot = {
-        ...snapshot,
-        ...liveSnapshot,
-        sourceSnapshot: source,
-        mode: 'playlist-snapshot-live-merged',
-      }
-      source = `${source}+d1-live-content-sync`
-    }
+    snapshot = await makePlaylistSnapshot(request, env, resolvedStore)
+    if (snapshot?.playlists) snapshot = { ...snapshot, mode: 'playlist-snapshot-live-readonly' }
   } catch (error) {
     diagnostics.push(`liveContentSync: ${safeErrorMessage(error)}`)
+    snapshot = {
+      ok: true,
+      playlists: { left: [], right: [] },
+      playlistGroups: {},
+      playlistSchedules: [],
+      activeSchedule: null,
+      activePlaylistGroup: null,
+      activePlaylistKey: 'default',
+      defaultPlaylistGroupId: '',
+      defaultPlaylistKey: 'default',
+      scheduleEngine: { enabled: false },
+      counts: { left: 0, right: 0, playlistGroups: 0, schedules: 0 },
+      playlistVersion: `live_error_${Date.now()}`,
+    }
   }
 
   const deviceRows = await env.DB.prepare(`
@@ -338,9 +326,10 @@ export async function onRequestGet({ request, env }) {
       playerStatePollMs: DEFAULT_PLAYER_STATE_POLL_MS,
       commandPoll: DEFAULT_COMMAND_POLL_MS,
       noticePollMs: DEFAULT_NOTICE_POLL_MS,
+      blackModePollMs: DEFAULT_BLACK_MODE_POLL_MS,
       contentCheck: DEFAULT_CONTENT_CHECK_MS,
       appConfigPollMs: DEFAULT_APP_CONFIG_POLL_MS,
-      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 600),
+      onlineTtlSec: Number(env.ONLINE_TTL_SEC || 1800),
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
     },
     layout: { leftRatio: 70, rightRatio: 30 },

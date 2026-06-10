@@ -43,7 +43,7 @@
       <h1>LocalVision 업체 ID / Player URL 관리</h1>
       <p>APP은 <b>lv001</b> 같은 업체 ID만 들고 있고, CMS의 <code style="display:inline;max-width:none">/api/app-config?id=lv001</code>가 최신 Player URL을 내려주는 구조입니다.</p>
     </div>
-    <div class="pill">CMS v1.7.4 · heartbeat 300000 · commandPoll 300000 · noticePollMs 60000</div>
+    <div class="pill">CMS v2.0.5 · heartbeat 600000 · commandPoll 600000 · noticePollMs 600000</div>
   </header>
 
   <section class="panel">
@@ -55,7 +55,7 @@
       <div><label>Player URL 직접 지정 선택사항</label><input id="newUrl" placeholder="비워두면 CMS가 표준 URL 자동 생성" /></div>
       <button id="createBtn">추가/저장</button>
     </div>
-    <p class="small">Player URL을 비워두면 CMS가 `PLAYER_BASE + store + apiBase + heartbeat/commandPoll/noticePollMs` 기준으로 자동 생성합니다.</p>
+    <p class="small">Player URL을 비워두면 CMS가 `PLAYER_BASE + store + apiBase + heartbeat/commandPoll/noticePollMs/blackModePollMs/playerStatePoll` 기준으로 자동 생성합니다.</p>
   </section>
 
   <section class="panel">
