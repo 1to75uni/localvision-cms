@@ -210,7 +210,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.0.5-d1-polling-diet-safe'
+export const LV_CORE_VERSION = 'v2.0.5a-device-online-ttl-ui-fix'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 600000
 export const DEFAULT_COMMAND_POLL_MS = 600000
@@ -316,7 +316,7 @@ function applyOrNormalizePollParam(url, key, value, legacyValues = []) {
     url.searchParams.set(key, next)
     return
   }
-  // v2.0.5: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
+  // v2.0.5/v2.0.5a: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
   // 단, 운영자가 명시적으로 넣은 비표준 커스텀 값은 건드리지 않아 현장 URL 호환성을 유지합니다.
   if (legacyValues.map(String).includes(String(current))) url.searchParams.set(key, next)
 }

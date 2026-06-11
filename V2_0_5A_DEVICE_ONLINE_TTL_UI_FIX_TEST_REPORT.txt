@@ -1,0 +1,36 @@
+LocalVision CMS v2.0.5a Test Report
+
+테스트 대상
+- CMS UI bundle: assets/index-v205a-device-online-ttl-ui-fix.js
+- dist UI bundle: dist/assets/index-v205a-device-online-ttl-ui-fix.js
+- Schedule manager: assets/lv-schedule-manager-v205a.js / dist/assets/lv-schedule-manager-v205a.js
+- API guard: assets/lv-cms-api-cors-safe-v205a.js / dist/assets/lv-cms-api-cors-safe-v205a.js
+- Core version: functions/_lib/localvision-core.js
+
+검증 항목
+1. JS 문법 검사
+   - functions/_lib/localvision-core.js: PASS
+   - functions/api/*.js: PASS
+   - assets/index-v205a-device-online-ttl-ui-fix.js: PASS
+   - dist/assets/index-v205a-device-online-ttl-ui-fix.js: PASS
+   - assets/lv-schedule-manager-v205a.js: PASS
+   - dist/assets/lv-schedule-manager-v205a.js: PASS
+   - assets/lv-cms-api-cors-safe-v205a.js: PASS
+   - dist/assets/lv-cms-api-cors-safe-v205a.js: PASS
+
+2. UI index 참조 확인
+   - index.html이 v205a asset을 참조함: PASS
+   - dist/index.html이 v205a asset을 참조함: PASS
+
+3. 온라인 판정 로직 정적 검증
+   - device.online boolean 우선 사용: PASS
+   - lastSeenSecondsAgo <= onlineTtlSec fallback: PASS
+   - 기본 onlineTtlSec fallback 1800: PASS
+   - lastSeenAt/lastSeenUtc/lastSeenRaw/lastSeen fallback: PASS
+
+4. ZIP 무결성 검사
+   - zip -T: PASS
+
+운영 테스트 권장
+- 배포 후 /api/health에서 version이 v2.0.5a-device-online-ttl-ui-fix로 나오는지 확인
+- /api/devices?lite=1에서 online=true인 10~30분 단말기가 CMS UI에서도 ONLINE으로 표시되는지 확인

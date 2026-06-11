@@ -1,0 +1,37 @@
+LocalVision CMS v2.0.5a — Device Online TTL UI Fix
+
+목적
+- v2.0.5에서 heartbeat/player polling을 10분으로 늘리고 online TTL을 30분으로 조정한 뒤,
+  CMS 화면 일부가 기존 10분 기준으로 단말기 ONLINE/OFFLINE을 표시할 수 있는 문제를 수정합니다.
+
+수정 내용
+1. CMS 단말기 온라인 판단 기준 통일
+   - API가 내려준 device.online 값을 최우선으로 사용합니다.
+   - device.online이 없을 때만 lastSeenSecondsAgo <= onlineTtlSec 기준으로 계산합니다.
+   - fallback TTL은 1800초(30분)입니다.
+   - lastSeenAt / lastSeenUtc / lastSeenRaw / lastSeen 순서로 시간 파싱 fallback을 적용합니다.
+
+2. UI/UX 버전 표기 갱신
+   - 로그인 화면 CMS v2.0.5a 표기
+   - 브라우저 title v2.0.5a 표기
+   - 스케줄 관리자 헤더 v2.0.5a 표기
+   - lv-id URL 관리자 표기 v2.0.5a 반영
+
+3. 기존 v2.0.5 D1 절감 구조 유지
+   - Player polling 10분 유지
+   - app-config 30분 유지
+   - ONLINE_TTL_SEC=1800 기준 유지
+   - /api/backup 30초 polling 제거 유지
+   - 스케줄 관리자 15초 polling 제거 유지
+
+변경하지 않은 것
+- APP/Player 수정 없음
+- API 주소 변경 없음
+- DB 스키마 변경 없음
+- R2 snapshot-first 전면 도입 없음
+- /api/player-state 구조 변경 없음
+
+확인 기준
+- /api/devices?lite=1에서 online=true인 단말기는 CMS UI에서도 ONLINE으로 표시되어야 합니다.
+- lastSeenSecondsAgo가 1800 이하이면 ONLINE, 1800 초과이면 OFFLINE으로 보여야 합니다.
+- 10~30분 사이의 heartbeat 단말기가 더 이상 CMS 화면에서 오프라인으로 잘못 표시되면 안 됩니다.
