@@ -1,3 +1,4 @@
+import {attachIntegrity} from './asset-integrity.js'
 export function corsHeaders(extra = {}) {
   return {
     'access-control-allow-origin': '*',
@@ -210,7 +211,7 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.0.5a-device-online-ttl-ui-fix'
+export const LV_CORE_VERSION = 'v2.1.0-stable-playback'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 600000
 export const DEFAULT_COMMAND_POLL_MS = 600000
@@ -318,7 +319,7 @@ function applyOrNormalizePollParam(url, key, value, legacyValues = []) {
   }
   // v2.0.5/v2.0.5a: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
   // 단, 운영자가 명시적으로 넣은 비표준 커스텀 값은 건드리지 않아 현장 URL 호환성을 유지합니다.
-  if (legacyValues.map(String).includes(String(current))) url.searchParams.set(key, next)
+  // Explicit installation settings are preserved in v2.1.0.
 }
 
 function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
@@ -1245,13 +1246,12 @@ export function isScheduleActiveAt(schedule = {}, value = new Date()) {
   if (!schedule || schedule.enabled === false) return false
   const parts = kstParts(value)
   const days = Array.isArray(schedule.days) ? schedule.days.map(Number) : parseJsonArray(schedule.daysJson ?? schedule.days_json, []).map(Number)
-  if (!days.includes(parts.day)) return false
   const start = minutesOfTime(schedule.startTime ?? schedule.start_time)
   const end = minutesOfTime(schedule.endTime ?? schedule.end_time)
   const now = parts.minutes
-  if (start === end) return true
-  if (start < end) return now >= start && now < end
-  return now >= start || now < end
+  if (start === end) return days.includes(parts.day)
+  if (start < end) return days.includes(parts.day) && now >= start && now < end
+  return (days.includes(parts.day) && now >= start) || (days.includes((parts.day+6)%7) && now < end)
 }
 
 export function pickActivePlaylistSchedule(schedules = [], value = new Date()) {
@@ -1362,7 +1362,7 @@ export async function readStoreBySlugOrId(env, storeOrId = '') {
 }
 
 function snapshotVersionOf(left = [], right = []) {
-  const light = { left: left.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder]), right: right.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder]) }
+  const light = { left: left.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder, x.integrity?.revision || '']), right: right.map((x) => [x.id, x.url, x.updatedAt, x.sortOrder, x.integrity?.revision || '']) }
   const text = JSON.stringify(light)
   let hash = 0
   for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0
@@ -1384,6 +1384,7 @@ export async function makePlaylistSnapshot(request, env, store = '') {
   const scheduledLeft = Array.isArray(schedulePayload?.activePlaylistGroup?.left) ? schedulePayload.activePlaylistGroup.left : []
   const left = scheduledLeft.length ? scheduledLeft : await readContentsForPlaylist(env, cleanStore, 'left')
   const right = await readContentsForPlaylist(env, cleanStore, 'right', cleanStore)
+  await attachIntegrity(env,[...left,...right,...Object.values(schedulePayload.playlistGroups || {}).flatMap(g=>g.left || [])])
   const now = nowUtcIso()
   const playlistVersion = snapshotVersionOf(left, right)
   return {
@@ -1445,6 +1446,7 @@ export async function writeJsonToR2(env, key, data) {
 
 export async function writeCommonRightSnapshot(request, env) {
   const right = await readContentsForPlaylist(env, '_common', 'right', '')
+  await attachIntegrity(env,right)
   const now = nowUtcIso()
   const doc = {
     ok: true,

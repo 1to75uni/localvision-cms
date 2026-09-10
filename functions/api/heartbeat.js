@@ -1,3 +1,4 @@
+import {saveHealth} from '../_lib/playback-health.js'
 import {
   json,
   LV_CORE_VERSION,
@@ -40,9 +41,14 @@ export async function onRequestPost({ request, env }) {
   }
   if (!store) return json({ ok: false, error: 'store or id is required' }, 400)
 
+  let healthAccepted=false,healthError=''
+  if(body.health && body.health.deviceId) {
+    try {await saveHealth(env,{...body.health,store});healthAccepted=true}
+    catch(error){healthError=String(error.message || error).slice(0,300)}
+  }
   const canonicalId = safeStoreDeviceId(store)
   const now = nowUtcIso()
-  const lastSeen = body.lastSeen || now
+  const lastSeen = now // Server receipt time is authoritative.
   const app = makePlayerAppLabel(body)
   const name = String(body.name || `${store} TV`).slice(0, 120)
   const role = String(body.role || 'player').slice(0, 40)
@@ -71,6 +77,7 @@ export async function onRequestPost({ request, env }) {
     const inserted = await env.DB.prepare(`SELECT * FROM devices WHERE id = ? LIMIT 1`).bind(canonicalId).first()
     return json({
       ok: true,
+      healthAccepted,healthError,
       version: LV_CORE_VERSION,
       endpoint: '/api/heartbeat',
       mode: 'inserted',
@@ -96,6 +103,7 @@ export async function onRequestPost({ request, env }) {
   if (!shouldWrite) {
     return json({
       ok: true,
+      healthAccepted,healthError,
       version: LV_CORE_VERSION,
       endpoint: '/api/heartbeat',
       mode: 'accepted-d1-skipped',
@@ -117,6 +125,7 @@ export async function onRequestPost({ request, env }) {
   const row = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY last_seen DESC, updated_at DESC LIMIT 1`).bind(store).first()
   return json({
     ok: true,
+    healthAccepted,healthError,
     version: LV_CORE_VERSION,
     endpoint: '/api/heartbeat',
     mode: 'written',

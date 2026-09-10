@@ -4,7 +4,7 @@ const path = require('path');
 const dist = path.join(__dirname, 'dist');
 fs.mkdirSync(dist, { recursive: true });
 
-for (const file of ['index.html', 'boot.html', 'lv-id-url-manager.html']) {
+for (const file of ['index.html', 'boot.html', 'lv-id-url-manager.html', 'playback-health.html']) {
   const from = path.join(__dirname, file);
   const to = path.join(dist, file);
   if (fs.existsSync(from)) fs.copyFileSync(from, to);
@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v2.0.5a DEVICE ONLINE TTL UI FIX static build: dist refreshed.');
+console.log('LocalVision CMS v2.1.0 STABLE PLAYBACK static build: dist refreshed.');

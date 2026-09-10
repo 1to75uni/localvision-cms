@@ -1,10 +1,11 @@
 {
-  "name": "localvision-cms-v2-0-5a-device-online-ttl-ui-fix",
-  "version": "2.0.5a-device-online-ttl-ui-fix",
+  "name": "localvision-cms",
+  "version": "2.1.0",
   "private": true,
-  "description": "LocalVision CMS v2.0.5a: device online TTL UI fix; CMS UI trusts API online/onlineTtlSec while keeping v2.0.5 D1 polling diet behavior.",
+  "description": "Independent playback recovery and durable playback diagnostics",
   "scripts": {
-    "build": "node build-static.js"
+    "build": "node build-static.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.*"
   },
   "dependencies": {},
   "devDependencies": {}

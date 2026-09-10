@@ -1,3 +1,5 @@
+import {inspect,saveIntegrity} from '../_lib/asset-integrity.js'
+import {inspectMp4,validateProfile} from '../_lib/media-inspection.js'
 import { ensureCoreSchema, DEFAULT_CONTENT_DURATION, DEFAULT_PLAYER_STATE_POLL_MS, writePlaylistSnapshots, writeCommonRightSnapshot, contentTargetFromForm, defaultPlaylistGroupId, ensureDefaultPlaylistGroup } from '../_lib/localvision-core.js'
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
@@ -111,6 +113,13 @@ export async function onRequestPost({ request, env }) {
     return json({ ok: false, error: 'store is required for left content' }, 400)
   }
 
+  let mediaInspection=null
+  if(ext==='mp4') {
+    try {mediaInspection=validateProfile(await inspectMp4(file),env)}
+    catch(error){return json({ok:false,error:error.message,errorCode:'LV-UPLOAD-PROFILE'},422)}
+  }
+  let integrity
+  try {integrity=await inspect(file.stream())}catch(error){return json({ok:false,error:error.message,errorCode:'LV-UPLOAD-INTEGRITY'},422)}
   const type = detectType(file)
   if (side === 'left') await ensureDefaultPlaylistGroup(env, store)
   const playlistGroupId = side === 'left'
@@ -119,7 +128,7 @@ export async function onRequestPost({ request, env }) {
   const target = contentTargetFromForm(form, side)
   const folder = side === 'right' ? 'stores/_common/right' : `stores/${store}/left`
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
-  const fileName = `${stamp}-${safeFileName(file.name)}`
+  const fileName = `${stamp}-${crypto.randomUUID().slice(0,8)}-${safeFileName(file.name)}`
   const key = `${folder}/${fileName}`
 
   await env.MEDIA.put(key, file.stream(), {
@@ -133,11 +142,12 @@ export async function onRequestPost({ request, env }) {
       side,
       type,
       originalName: file.name,
+      inspection: mediaInspection ? JSON.stringify(mediaInspection) : '',
     },
   })
 
   const content = {
-    id: `ct_${Date.now()}`,
+    id: `ct_${crypto.randomUUID()}`,
     store,
     side,
     type,
@@ -155,6 +165,8 @@ export async function onRequestPost({ request, env }) {
     playlistGroupId,
   }
 
+  await saveIntegrity(env,content.id,content.url,integrity)
+  content.integrity=integrity
   await env.DB.prepare(`
     INSERT INTO contents
     (id, store, side, type, title, duration, status, file_name, url, sort_order, updated_at, r2_key, target_mode, target_stores_json, playlist_group_id)
@@ -177,6 +189,7 @@ export async function onRequestPost({ request, env }) {
     content.playlistGroupId
   ).run()
 
+
   let snapshot = null
   try {
     snapshot = store === '_common' ? await writeCommonRightSnapshot(request, env) : await writePlaylistSnapshots(request, env, store)
@@ -189,6 +202,7 @@ export async function onRequestPost({ request, env }) {
     ok: true,
     key,
     content,
+    mediaInspection,
     snapshot,
     contentReflect: {
       side,
