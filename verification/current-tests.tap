@@ -1,0 +1,233 @@
+TAP version 13
+# Subtest: missing database returns explicit failure
+ok 1 - missing database returns explicit failure
+  ---
+  duration_ms: 7.734772
+  type: 'test'
+  ...
+# Subtest: new schema is created once on write; never during normal GET
+ok 2 - new schema is created once on write; never during normal GET
+  ---
+  duration_ms: 7.084898
+  type: 'test'
+  ...
+# Subtest: retransmission is idempotent and left/right occurrences remain distinct
+ok 3 - retransmission is idempotent and left/right occurrences remain distinct
+  ---
+  duration_ms: 5.471826
+  type: 'test'
+  ...
+# Subtest: per-entry acknowledgement reports partial validity exactly
+ok 4 - per-entry acknowledgement reports partial validity exactly
+  ---
+  duration_ms: 1.817379
+  type: 'test'
+  ...
+# Subtest: database failure is not acknowledged as a saved log
+ok 5 - database failure is not acknowledged as a saved log
+  ---
+  duration_ms: 1.133843
+  type: 'test'
+  ...
+# Subtest: event lookup isolates stores and devices
+ok 6 - event lookup isolates stores and devices
+  ---
+  duration_ms: 2.757937
+  type: 'test'
+  ...
+# Subtest: out-of-order health never replaces a newer report
+ok 7 - out-of-order health never replaces a newer report
+  ---
+  duration_ms: 2.403714
+  type: 'test'
+  ...
+# Subtest: new boot supersedes old session, old pending reports cannot overwrite it
+ok 8 - new boot supersedes old session, old pending reports cannot overwrite it
+  ---
+  duration_ms: 1.468009
+  type: 'test'
+  ...
+# Subtest: two physical devices in one store retain independent lane states
+ok 9 - two physical devices in one store retain independent lane states
+  ---
+  duration_ms: 1.110046
+  type: 'test'
+  ...
+# Subtest: deliberate black mode is not reported as a playback fault
+ok 10 - deliberate black mode is not reported as a playback fault
+  ---
+  duration_ms: 1.235093
+  type: 'test'
+  ...
+# Subtest: stale previously healthy status is shown as unknown freshness
+ok 11 - stale previously healthy status is shown as unknown freshness
+  ---
+  duration_ms: 0.247606
+  type: 'test'
+  ...
+# Subtest: invalid JSON gets a client error
+ok 12 - invalid JSON gets a client error
+  ---
+  duration_ms: 1.051454
+  type: 'test'
+  ...
+# Subtest: old schema read stays read-only; write migrates and manifest survives lookup
+ok 13 - old schema read stays read-only; write migrates and manifest survives lookup
+  ---
+  duration_ms: 21.171549
+  type: 'test'
+  ...
+# Subtest: metadata is bound to content ID and exact URL
+ok 14 - metadata is bound to content ID and exact URL
+  ---
+  duration_ms: 3.589949
+  type: 'test'
+  ...
+# Subtest: backfill is idempotent, scoped, and does not modify original media
+ok 15 - backfill is idempotent, scoped, and does not modify original media
+  ---
+  duration_ms: 14.302607
+  type: 'test'
+  ...
+# Subtest: R2 missing source is never marked verified
+ok 16 - R2 missing source is never marked verified
+  ---
+  duration_ms: 1.690084
+  type: 'test'
+  ...
+# Subtest: database error is propagated rather than treated as legacy metadata
+ok 17 - database error is propagated rather than treated as legacy metadata
+  ---
+  duration_ms: 0.643057
+  type: 'test'
+  ...
+# Subtest: delivery health preserves stages and distinguishes verified from legacy
+ok 18 - delivery health preserves stages and distinguishes verified from legacy
+  ---
+  duration_ms: 0.93003
+  type: 'test'
+  ...
+# Subtest: overnight schedules use the weekday on which the interval starts
+ok 19 - overnight schedules use the weekday on which the interval starts
+  ---
+  duration_ms: 0.519176
+  type: 'test'
+  ...
+# Subtest: upload publishes a content row only with persisted integrity; snapshot carries it
+ok 20 - upload publishes a content row only with persisted integrity; snapshot carries it
+  ---
+  duration_ms: 23.143101
+  type: 'test'
+  ...
+# Subtest: bounded MP4 parser reads a normal H.264 track including moov at end
+ok 21 - bounded MP4 parser reads a normal H.264 track including moov at end
+  ---
+  duration_ms: 2.600448
+  type: 'test'
+  ...
+# Subtest: HEVC upload gives an actionable rejection
+ok 22 - HEVC upload gives an actionable rejection
+  ---
+  duration_ms: 0.53367
+  type: 'test'
+  ...
+# Subtest: 4K upload is rejected before R2 activation
+ok 23 - 4K upload is rejected before R2 activation
+  ---
+  duration_ms: 0.154569
+  type: 'test'
+  ...
+# Subtest: 60fps upload is rejected
+ok 24 - 60fps upload is rejected
+  ---
+  duration_ms: 0.181161
+  type: 'test'
+  ...
+# Subtest: high 10-bit AVC profile is rejected
+ok 25 - high 10-bit AVC profile is rejected
+  ---
+  duration_ms: 0.59978
+  type: 'test'
+  ...
+# Subtest: corrupt MP4 cannot pass by filename extension
+ok 26 - corrupt MP4 cannot pass by filename extension
+  ---
+  duration_ms: 0.523777
+  type: 'test'
+  ...
+# Subtest: read-only probe counts D1 metadata for first/all/run/batch without an accounting write
+ok 27 - read-only probe counts D1 metadata for first/all/run/batch without an accounting write
+  ---
+  duration_ms: 2.46176
+  type: 'test'
+  ...
+# Subtest: actual CMS API wrapper rejects a degraded HTTP 200 and switches to unavailable
+ok 28 - actual CMS API wrapper rejects a degraded HTTP 200 and switches to unavailable
+  ---
+  duration_ms: 8.396334
+  type: 'test'
+  ...
+# Subtest: diagnostic UI includes independent lanes and current excluded filenames
+ok 29 - diagnostic UI includes independent lanes and current excluded filenames
+  ---
+  duration_ms: 28.598958
+  type: 'test'
+  ...
+# Subtest: database read failure is shown as unavailable, never no errors
+ok 30 - database read failure is shown as unavailable, never no errors
+  ---
+  duration_ms: 3.361554
+  type: 'test'
+  ...
+# Subtest: untrusted content titles are escaped
+ok 31 - untrusted content titles are escaped
+  ---
+  duration_ms: 2.717951
+  type: 'test'
+  ...
+# Subtest: delivery UI distinguishes file preparation from playing and legacy assurance
+ok 32 - delivery UI distinguishes file preparation from playing and legacy assurance
+  ---
+  duration_ms: 2.672335
+  type: 'test'
+  ...
+# CAPACITY_MODEL {"TVs":200,"hours":24,"actualSQLiteRowChanges":{"presence":19200,"health":9600,"events":4800},"conservativeEstimatedD1Writes":86400,"freeDailyLimit":100000,"remainingForOtherWork":13600}
+# Subtest: 200 TVs / 24 hours: bounded presence, health and error writes under an error storm
+ok 33 - 200 TVs / 24 hours: bounded presence, health and error writes under an error storm
+  ---
+  duration_ms: 7451.748369
+  type: 'test'
+  ...
+# Subtest: app/phase changes and native shell heartbeats cannot bypass the time guard or run schema repair
+ok 34 - app/phase changes and native shell heartbeats cannot bypass the time guard or run schema repair
+  ---
+  duration_ms: 64.894928
+  type: 'test'
+  ...
+# Subtest: parallel heartbeats update one canonical device once, preserving duplicate rows and commands
+ok 35 - parallel heartbeats update one canonical device once, preserving duplicate rows and commands
+  ---
+  duration_ms: 3.355378
+  type: 'test'
+  ...
+# Subtest: health boot changes are deferred within the window and applied after it; no immediate write loophole
+ok 36 - health boot changes are deferred within the window and applied after it; no immediate write loophole
+  ---
+  duration_ms: 2.364646
+  type: 'test'
+  ...
+# Subtest: quota errors are machine readable; historical quota logs do not trigger false alarms
+ok 37 - quota errors are machine readable; historical quota logs do not trigger false alarms
+  ---
+  duration_ms: 2.129954
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8299.546738

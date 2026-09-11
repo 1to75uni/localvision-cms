@@ -1,6 +1,6 @@
 {
   "name": "localvision-cms",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "description": "Independent playback recovery and durable playback diagnostics",
   "scripts": {

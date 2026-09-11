@@ -4,13 +4,20 @@ export function corsHeaders(extra = {}) {
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS,HEAD',
     'access-control-allow-headers': 'content-type,range,cache-control,pragma,authorization,x-lv-admin-token',
-    'access-control-expose-headers': 'content-length,content-range,accept-ranges,etag,content-type',
+    'access-control-expose-headers': 'content-length,content-range,accept-ranges,etag,content-type,retry-after,x-lv-d1-rows-read,x-lv-d1-rows-written,x-lv-d1-queries',
     'cache-control': 'no-store, no-cache, must-revalidate',
     ...extra,
   }
 }
 
 export function json(data, status = 200, extraHeaders = {}) {
+  // Inspect only active failure fields: an old quota event in a successful log list is not a new outage.
+  const failure = data?.error || data?.healthError || (data?.degraded ? JSON.stringify(data.diagnostics || data) : '');
+  if (/D1.*(?:exceeded|limit)|daily row (?:write|read) limit/i.test(String(failure))) {
+    data = {ok:false,errorCode:'LV-D1-QUOTA',error:'D1 일일 한도로 서버 상태 저장을 확인할 수 없습니다. 저장된 영상 재생은 계속됩니다.',retryAfterSec:900,serverNowUtc:new Date().toISOString()};
+    status = 503; extraHeaders = {...extraHeaders,'retry-after':'900'};
+  }
+
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
@@ -211,13 +218,13 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.1.0-stable-playback'
+export const LV_CORE_VERSION = 'v2.1.1-stable-playback'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 600000
 export const DEFAULT_COMMAND_POLL_MS = 600000
 export const DEFAULT_NOTICE_POLL_MS = 600000
 export const DEFAULT_CONTENT_CHECK_MS = 600000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 900
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
 export const DEFAULT_PLAYER_STATE_POLL_MS = 600000
 export const DEFAULT_BLACK_MODE_POLL_MS = 600000
@@ -319,7 +326,7 @@ function applyOrNormalizePollParam(url, key, value, legacyValues = []) {
   }
   // v2.0.5/v2.0.5a: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
   // 단, 운영자가 명시적으로 넣은 비표준 커스텀 값은 건드리지 않아 현장 URL 호환성을 유지합니다.
-  // Explicit installation settings are preserved in v2.1.0.
+  // Explicit installation settings are preserved in v2.1.1.
 }
 
 function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
@@ -1508,8 +1515,8 @@ export async function safeAll(env, sql, binds = []) {
 }
 
 export function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 1800)
-  return Number.isFinite(value) && value > 0 ? value : 1800
+  const value = Number(env.ONLINE_TTL_SEC || 2400)
+  return Number.isFinite(value) && value > 0 ? Math.max(2400, value) : 2400
 }
 
 export function parseLastSeenMs(value, nowMs = Date.now()) {

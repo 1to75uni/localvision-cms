@@ -1,5 +1,5 @@
 import {json, cleanSlug, nowUtcIso, toKstString} from './localvision-core.js'
-export const HEALTH_VERSION = 'v2.1.0-stable-playback'
+export const HEALTH_VERSION = 'v2.1.1-stable-playback'
 const migrations = [
   `CREATE TABLE IF NOT EXISTS player_events (id TEXT PRIMARY KEY, store TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', error_code TEXT NOT NULL, level TEXT NOT NULL DEFAULT 'error', message TEXT NOT NULL DEFAULT '', event_at TEXT NOT NULL, received_at TEXT NOT NULL, extra_json TEXT NOT NULL DEFAULT '{}')`,
   `CREATE INDEX IF NOT EXISTS idx_player_events_store_time ON player_events(store, received_at DESC)`,
@@ -46,9 +46,14 @@ export async function saveEvents(env, entries, inherited={}) {
     valid.push({id,index:i,store,deviceId,code:str(raw.errorCode || 'LV-UNKNOWN',100),level:['debug','info','warning','error','fatal'].includes(raw.level)?raw.level:'error',message:str(raw.message || raw.error || 'Player event',1000),eventAt:validTime(raw.timeUtc || raw.time,now),extra:safeExtra(extra)})
   }
   if(!valid.length) return {ok:false,acknowledged:[],saved:0,rejected,error:'저장할 유효한 로그가 없습니다.'}
-  const results=await withPlaybackSchema(env,()=>env.DB.batch(valid.map(e=>env.DB.prepare(`INSERT INTO player_events (id,store,device_id,error_code,level,message,event_at,received_at,extra_json) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`).bind(e.id,e.store,e.deviceId,e.code,e.level,e.message,e.eventAt,now,e.extra))))
+  const dayStart=now.slice(0,10)+'T00:00:00.000Z';
+  const results=await withPlaybackSchema(env,()=>env.DB.batch(valid.map(e=>env.DB.prepare(`INSERT INTO player_events (id,store,device_id,error_code,level,message,event_at,received_at,extra_json) SELECT ?,?,?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM player_events WHERE store=? AND received_at>=?) < 24 ON CONFLICT(id) DO NOTHING`).bind(e.id,e.store,e.deviceId,e.code,e.level,e.message,e.eventAt,now,e.extra,e.store,dayStart))))
   const acknowledged=valid.filter((_,i)=>results[i]?.success===true).map(e=>e.id)
-  return {ok:acknowledged.length>0,acknowledged,saved:acknowledged.length,received:entries.length,rejected,serverNowUtc:now,version:HEALTH_VERSION}
+  const unchanged=valid.filter((_,i)=>results[i]?.success===true && !results[i]?.meta?.changes).map(e=>e.id);
+  const existing=unchanged.length?await env.DB.prepare(`SELECT id FROM player_events WHERE id IN (${unchanged.map(()=>'?').join(',')})`).bind(...unchanged).all():{results:[]};
+  const persisted=new Set((existing.results || []).map(e=>e.id));
+  const suppressed=unchanged.filter(id=>!persisted.has(id));
+  return {ok:acknowledged.length>0,acknowledged,suppressed,samplingPolicy:"24 new events per store per UTC day; duplicates or excess acknowledged without a new write",saved:results.filter(r=>r?.meta?.changes>0).length,received:entries.length,rejected,serverNowUtc:now,version:HEALTH_VERSION}
 }
 export function normalizedEvent(row) {
   let extra={};try{extra=JSON.parse(row.extra_json || '{}')}catch(_){}
@@ -80,14 +85,14 @@ export async function saveHealth(env, raw) {
   const now=nowUtcIso()
   const result=await withPlaybackSchema(env,()=>env.DB.prepare(`INSERT INTO player_status (device_id,store,session_id,boot_sequence,sequence,received_at,payload_json) VALUES (?,?,?,?,?,?,?)
     ON CONFLICT(device_id) DO UPDATE SET store=excluded.store,session_id=excluded.session_id,boot_sequence=excluded.boot_sequence,sequence=excluded.sequence,received_at=excluded.received_at,payload_json=excluded.payload_json
-    WHERE excluded.boot_sequence > player_status.boot_sequence OR (excluded.boot_sequence = player_status.boot_sequence AND excluded.session_id = player_status.session_id AND excluded.sequence > player_status.sequence)`)
+    WHERE julianday(excluded.received_at) - julianday(player_status.received_at) >= (1800.0 / 86400.0) - 0.00000001 AND (excluded.boot_sequence > player_status.boot_sequence OR (excluded.boot_sequence = player_status.boot_sequence AND excluded.session_id = player_status.session_id AND excluded.sequence > player_status.sequence))`)
     .bind(value.deviceId,value.store,value.sessionId,value.bootSequence,value.sequence,now,JSON.stringify(value)).run())
-  return {ok:true,healthAccepted:true,updated:Boolean(result?.meta?.changes),receivedAt:now}
+  return {ok:true,healthAccepted:true,updated:Boolean(result?.meta?.changes),writePolicySec:1800,receivedAt:now}
 }
 export function mappedHealth(row, now=Date.now()) {
   let payload={};try{payload=JSON.parse(row.payload_json)}catch(_){}
   const age=Math.max(0,Math.floor((now-Date.parse(row.received_at))/1000))
-  const ttl=Math.max(120,Math.min(7200,Math.ceil((payload.heartbeatMs || 300000)*2/1000)+30))
+  const ttl=Math.max(2400,Math.min(7200,Math.ceil((payload.heartbeatMs || 300000)*2/1000)+30))
   const stale=!Number.isFinite(age) || age>ttl
   const problem=[payload.left,payload.right].some(x=>['retrying','quarantined','fallback','stopped','unknown'].includes(x?.status) || x?.exclusions?.length)
   const operational=payload.blackMode?'black-mode':payload.notice?'notice':payload.visibility==='hidden'?'hidden':problem?'degraded':

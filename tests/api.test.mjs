@@ -33,7 +33,7 @@ test('out-of-order health never replaces a newer report',async()=>{
   const env=database();await saveHealth(env,health(3));await saveHealth(env,{...health(2),left:{status:'fallback'}});const result=await readHealth(env,'store-a');assert.equal(result.devices[0].sequence,3);assert.equal(result.devices[0].status,'healthy');
 });
 test('new boot supersedes old session, old pending reports cannot overwrite it',async()=>{
-  const env=database();await saveHealth(env,health(10));await saveHealth(env,health(1,'device-a',2,'session-b'));await saveHealth(env,health(20));assert.equal((await readHealth(env)).devices[0].sessionId,'session-b');
+  const env=database();await saveHealth(env,health(10));env.DB.sqlite.exec("UPDATE player_status SET received_at='2000-01-01T00:00:00.000Z'");await saveHealth(env,health(1,'device-a',2,'session-b'));await saveHealth(env,health(20));assert.equal((await readHealth(env)).devices[0].sessionId,'session-b');
 });
 test('two physical devices in one store retain independent lane states',async()=>{
   const env=database();await saveHealth(env,health(1,'device-a'));await saveHealth(env,{...health(1,'device-b'),right:{status:'fallback'}});const result=await readHealth(env,'store-a');assert.equal(result.devices.length,2);assert.deepEqual(new Set(result.devices.map(d=>d.status)),new Set(['healthy','degraded']));
@@ -42,7 +42,7 @@ test('deliberate black mode is not reported as a playback fault',async()=>{
   const env=database();await saveHealth(env,{...health(),blackMode:true,left:{status:'paused'},right:{status:'paused'}});assert.equal((await readHealth(env)).devices[0].status,'black-mode');
 });
 test('stale previously healthy status is shown as unknown freshness',()=>{
-  const now=Date.now();const row={device_id:'d',store:'s',received_at:new Date(now-700000).toISOString(),payload_json:JSON.stringify(health())};assert.equal(mappedHealth(row,now).status,'stale');
+  const now=Date.now();const row={device_id:'d',store:'s',received_at:new Date(now-2500000).toISOString(),payload_json:JSON.stringify(health())};assert.equal(mappedHealth(row,now).status,'stale');
 });
 test('invalid JSON gets a client error',async()=>{
   const env=database();const res=await status.onRequestPost({env,request:new Request('https://test.invalid',{method:'POST',body:'not json'})});assert.equal(res.status,400);

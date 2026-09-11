@@ -72,7 +72,7 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare(`
       INSERT INTO devices
       (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 1, ?, ?, ?, '', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?, '', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING
     `).bind(canonicalId, store, name, role, lastSeen, app, deviceCode).run()
     const inserted = await env.DB.prepare(`SELECT * FROM devices WHERE id = ? LIMIT 1`).bind(canonicalId).first()
     return json({
@@ -91,14 +91,14 @@ export async function onRequestPost({ request, env }) {
 
   const nowMs = Date.now()
   const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
-  const writeSec = Math.max(0, Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC || 600))
+  const writeSec = Math.max(900, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
   const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
   const appChanged = String(current.app || '') !== app
   const commandCarry = {
     last_command: current.last_command || '',
     command_at: current.command_at || '',
   }
-  const shouldWrite = !lastWrittenMs || !wasFresh || appChanged || writeSec <= 0 || nowMs - lastWrittenMs >= writeSec * 1000
+  const shouldWrite = !lastWrittenMs || lastWrittenMs > nowMs + 300000 || nowMs - lastWrittenMs >= writeSec * 1000
 
   if (!shouldWrite) {
     return json({
@@ -119,8 +119,8 @@ export async function onRequestPost({ request, env }) {
     UPDATE devices
     SET store = ?, name = ?, role = ?, online = 1, last_seen = ?, app = ?,
         device_code = COALESCE(NULLIF(device_code, ''), ?), updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? OR store = ?
-  `).bind(store, name, role, lastSeen, app, deviceCode, current.id || canonicalId, store).run()
+    WHERE id = ? AND COALESCE(last_seen, '') = ?
+  `).bind(store, name, role, lastSeen, app, deviceCode, current.id || canonicalId, current.last_seen || '').run()
 
   const row = await env.DB.prepare(`SELECT * FROM devices WHERE store = ? ORDER BY last_seen DESC, updated_at DESC LIMIT 1`).bind(store).first()
   return json({

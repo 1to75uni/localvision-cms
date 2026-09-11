@@ -1,3 +1,4 @@
+import {onRequestPost as acceptHeartbeat} from './heartbeat.js'
 import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, LV_CORE_VERSION, parseLastSeenMs, onlineTtlSec, DEFAULT_D1_HEARTBEAT_WRITE_SEC } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
@@ -158,10 +159,12 @@ export async function onRequestPost({ request, env }) {
 
 export async function onRequestPatch({ request, env }) {
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
-  await ensureCoreSchema(env)
-
   const body = await readBody(request)
   const incoming = normalizeIncoming(body)
+  if (isHeartbeatOnlyPatch(body, incoming)) {
+    return acceptHeartbeat({env,request:new Request(request.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...body,playerVersion:body.app || body.playerVersion})})})
+  }
+  await ensureCoreSchema(env)
 
   if (!incoming.id && !incoming.store) {
     return json({ ok: false, error: 'id or store is required' }, 400)
@@ -219,10 +222,10 @@ export async function onRequestPatch({ request, env }) {
   if (heartbeatOnly) {
     const nowMs = Date.now()
     const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
-    const writeSec = Math.max(0, Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC || 600))
+    const writeSec = Math.max(900, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
     const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
     const appChanged = String(app || '') !== String(current.app || '')
-    const shouldWriteHeartbeat = !lastWrittenMs || !wasFresh || appChanged || writeSec <= 0 || nowMs - lastWrittenMs >= writeSec * 1000
+    const shouldWriteHeartbeat = !lastWrittenMs || nowMs - lastWrittenMs >= writeSec * 1000
 
     if (!shouldWriteHeartbeat) {
       return json({

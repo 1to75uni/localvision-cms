@@ -135,7 +135,7 @@ export async function onRequestPost({ request, env }) {
 
   const canonicalId = safeStoreDeviceId(resolvedStore)
   const now = nowUtcIso()
-  const lastSeen = body.lastSeen || now
+  const lastSeen = now // Never use a device clock as the server write throttle.
   const name = `${resolvedStore} TV`
   const app = makePlayerAppLabel(body)
   const role = 'player'
@@ -154,23 +154,23 @@ export async function onRequestPost({ request, env }) {
     await env.DB.prepare(`
       INSERT INTO devices
       (id, store, name, role, online, last_seen, app, device_code, last_command, command_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 1, ?, ?, ?, '', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?, '', '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) ON CONFLICT(id) DO NOTHING
     `).bind(canonicalId, resolvedStore, name, role, lastSeen, app, `LV-${resolvedStore.toUpperCase()}-01`).run()
   } else {
     const nowMs = Date.now()
     const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
-    const writeSec = Math.max(0, Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC || 600))
+    const writeSec = Math.max(900, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
     const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
     const appChanged = String(current.app || '') !== app
-    const shouldWrite = !lastWrittenMs || !wasFresh || appChanged || writeSec <= 0 || nowMs - lastWrittenMs >= writeSec * 1000
+    const shouldWrite = !lastWrittenMs || lastWrittenMs > nowMs + 300000 || nowMs - lastWrittenMs >= writeSec * 1000
 
     if (shouldWrite) {
       await env.DB.prepare(`
         UPDATE devices
         SET store = ?, name = ?, role = ?, online = 1, last_seen = ?, app = ?,
             device_code = COALESCE(NULLIF(device_code, ''), ?), updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? OR store = ?
-      `).bind(resolvedStore, name, role, lastSeen, app, `LV-${resolvedStore.toUpperCase()}-01`, current.id || canonicalId, resolvedStore).run()
+        WHERE id = ? AND COALESCE(last_seen, '') = ?
+      `).bind(resolvedStore, name, role, lastSeen, app, `LV-${resolvedStore.toUpperCase()}-01`, current.id || canonicalId, current.last_seen || '').run()
     } else {
       return json({
         ok: true,
