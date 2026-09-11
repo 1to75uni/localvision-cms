@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const source=fs.readFileSync(path.join(__dirname,'../assets/lv-playback-health-v211.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../assets/lv-playback-health-v212.js'),'utf8');
 async function ui({healthFailed=false,logsFailed=false,title='정상 영상',delivery={}}={}) {
   const listeners={},root={isConnected:true,innerHTML:'',classList:{add(){}},addEventListener:(name,fn)=>listeners[name]=fn};
   const selection={innerHTML:'',add(){},addEventListener(){}};

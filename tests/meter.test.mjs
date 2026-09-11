@@ -7,7 +7,7 @@ test('read-only probe counts D1 metadata for first/all/run/batch without an acco
  assert.deepEqual(stats,{rowsRead:7,rowsWritten:2,queries:3});assert.equal(reads,2);
 });
 test('actual CMS API wrapper rejects a degraded HTTP 200 and switches to unavailable',async()=>{
- const source=readFileSync(new URL('../assets/index-v211-stable.js',import.meta.url),'utf8');const start=source.indexOf('async function St('),end=source.indexOf('async function Ct(',start);
+ const source=readFileSync(new URL('../assets/index-v212-stable.js',import.meta.url),'utf8');const start=source.indexOf('async function St('),end=source.indexOf('async function Ct(',start);
  const states=[];const St=new Function('fetch','FormData','O',source.slice(start,end)+';return St;')(async()=>new Response(JSON.stringify({ok:true,degraded:true,error:'quota'})),FormData,s=>states.push(s));
  await assert.rejects(St('/api/backup'),/quota/);assert.deepEqual(states,['unavailable']);
 });

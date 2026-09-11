@@ -128,7 +128,8 @@ async function readMode(env, store, options = {}) {
   try {
     const row = await env.DB.prepare(`SELECT * FROM black_modes WHERE store = ? LIMIT 1`).bind(store).first()
     return mapRow(row ? { ...row, store } : { store })
-  } catch {
+  } catch (error) {
+    if(!/no such table|does not exist/i.test(String(error?.message||error)))throw error
     return mapRow({ store })
   }
 }

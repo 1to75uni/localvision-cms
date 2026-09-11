@@ -222,7 +222,7 @@ export async function onRequestPatch({ request, env }) {
   if (heartbeatOnly) {
     const nowMs = Date.now()
     const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
-    const writeSec = Math.max(900, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
+    const writeSec = Math.max(600, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
     const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
     const appChanged = String(app || '') !== String(current.app || '')
     const shouldWriteHeartbeat = !lastWrittenMs || nowMs - lastWrittenMs >= writeSec * 1000

@@ -218,16 +218,16 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.1.1-stable-playback'
+export const LV_CORE_VERSION = 'v2.1.2-stable-playback'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 600000
-export const DEFAULT_COMMAND_POLL_MS = 600000
-export const DEFAULT_NOTICE_POLL_MS = 600000
-export const DEFAULT_CONTENT_CHECK_MS = 600000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 900
+export const DEFAULT_COMMAND_POLL_MS = 300000
+export const DEFAULT_NOTICE_POLL_MS = 300000
+export const DEFAULT_CONTENT_CHECK_MS = 900000
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
-export const DEFAULT_PLAYER_STATE_POLL_MS = 600000
-export const DEFAULT_BLACK_MODE_POLL_MS = 600000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 900000
+export const DEFAULT_BLACK_MODE_POLL_MS = 300000
 
 export function normalizeLvId(value = '') {
   const raw = String(value || '').trim().toLowerCase()
@@ -326,7 +326,7 @@ function applyOrNormalizePollParam(url, key, value, legacyValues = []) {
   }
   // v2.0.5/v2.0.5a: 기존 D1 과다호출 기본값(60초/5분/8분/15분 계열)은 10분 운영값으로 자동 보정합니다.
   // 단, 운영자가 명시적으로 넣은 비표준 커스텀 값은 건드리지 않아 현장 URL 호환성을 유지합니다.
-  // Explicit installation settings are preserved in v2.1.1.
+  // Explicit installation settings are preserved in v2.1.2.
 }
 
 function applyPlayerUrlDefaults(request, env, url, storeSlug = '', appId = '') {
@@ -1515,8 +1515,8 @@ export async function safeAll(env, sql, binds = []) {
 }
 
 export function onlineTtlSec(env) {
-  const value = Number(env.ONLINE_TTL_SEC || 2400)
-  return Number.isFinite(value) && value > 0 ? Math.max(2400, value) : 2400
+  const value = Number(env.ONLINE_TTL_SEC || 1500)
+  return Number.isFinite(value) && value > 0 ? Math.max(1500, value) : 1500
 }
 
 export function parseLastSeenMs(value, nowMs = Date.now()) {

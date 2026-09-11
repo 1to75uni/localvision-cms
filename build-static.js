@@ -19,4 +19,4 @@ if (fs.existsSync(assetsFrom)) {
   }
 }
 
-console.log('LocalVision CMS v2.1.1 STABLE PLAYBACK static build: dist refreshed.');
+console.log('LocalVision CMS v2.1.2 STABLE PLAYBACK static build: dist refreshed.');

@@ -159,7 +159,7 @@ export async function onRequestPost({ request, env }) {
   } else {
     const nowMs = Date.now()
     const lastWrittenMs = parseLastSeenMs(current.last_seen || current.lastSeen || '', nowMs)
-    const writeSec = Math.max(900, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
+    const writeSec = Math.max(600, Number(env.D1_HEARTBEAT_WRITE_SEC) || DEFAULT_D1_HEARTBEAT_WRITE_SEC)
     const wasFresh = lastWrittenMs > 0 && nowMs - lastWrittenMs <= onlineTtlSec(env) * 1000
     const appChanged = String(current.app || '') !== app
     const shouldWrite = !lastWrittenMs || lastWrittenMs > nowMs + 300000 || nowMs - lastWrittenMs >= writeSec * 1000
