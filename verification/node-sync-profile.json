@@ -1,0 +1,11 @@
+{
+  "runtime": "v24.19.0",
+  "measurement": "Node process CPU with in-memory SQLite; not Cloudflare CPU",
+  "requests": 1000,
+  "p50": 0.083,
+  "p95": 0.411,
+  "p99": 1.584,
+  "max": 4.105,
+  "average": 0.1592830000000001,
+  "cloudflareCpuValidated": false
+}

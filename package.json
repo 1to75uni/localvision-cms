@@ -1,6 +1,6 @@
 {
   "name": "localvision-cms",
-  "version": "2.1.2",
+  "version": "3.0.0",
   "private": true,
   "description": "Independent playback recovery and durable playback diagnostics",
   "scripts": {
@@ -8,5 +8,6 @@
     "test": "node --test --test-concurrency=1 tests/*.test.*"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "engines": {"node": ">=24"}
 }

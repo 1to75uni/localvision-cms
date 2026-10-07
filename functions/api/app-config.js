@@ -60,7 +60,7 @@ function configResponse(request, env, store, diagnostics = []) {
       contentCheck: DEFAULT_CONTENT_CHECK_MS,
       onlineTtlSec: Number(env.ONLINE_TTL_SEC || 1800),
       d1HeartbeatWriteSec: Number(env.D1_HEARTBEAT_WRITE_SEC || DEFAULT_D1_HEARTBEAT_WRITE_SEC),
-      heartbeatWritePolicy: 'd1-write-every-10-min-or-status-change',
+      heartbeatWritePolicy: 'v3-normal-state-every-20-min-important-events-bounded',
       defaultDurationSec: 20,
     },
     updatedAt: nowUtcIso(),

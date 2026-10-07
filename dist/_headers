@@ -1,0 +1,6 @@
+/assets/*
+  Cache-Control: public, max-age=300
+/*.html
+  Cache-Control: no-cache
+/
+  Cache-Control: no-cache

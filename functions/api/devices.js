@@ -1,3 +1,5 @@
+import {projectRuntimeDevices} from '../_lib/runtime-devices.js'
+import {isAuthorized} from '../_lib/auth.js'
 import {onRequestPost as acceptHeartbeat} from './heartbeat.js'
 import { json, ensureCoreSchema, mapDevice, cleanSlug, cleanupDuplicateDevices, dedupeDeviceRows, nowUtcIso, LV_CORE_VERSION, parseLastSeenMs, onlineTtlSec, DEFAULT_D1_HEARTBEAT_WRITE_SEC } from '../_lib/localvision-core.js'
 
@@ -90,7 +92,7 @@ export async function onRequestGet({ request, env }) {
     ORDER BY created_at DESC
   `).all()
 
-  const devices = dedupeDeviceRows(results || [], env).map((row) => {
+  let devices = dedupeDeviceRows(results || [], env).map((row) => {
     const mapped = mapDevice(row, env)
     if (!lite) return mapped
     return {
@@ -112,6 +114,7 @@ export async function onRequestGet({ request, env }) {
     }
   })
 
+  devices=await projectRuntimeDevices(env,devices)
   return json({ ok: true, version: LV_CORE_VERSION, mode: lite ? 'lite' : 'full', devices })
 }
 
@@ -158,6 +161,9 @@ export async function onRequestPost({ request, env }) {
 }
 
 export async function onRequestPatch({ request, env }) {
+  const attempted=await request.clone().json().catch(()=>({}));
+  if((attempted.lastCommand || attempted.last_command || attempted.command) && !await isAuthorized(request,env))return json({ok:false,error:'CMS 로그인 필요'},401)
+
   if (!env.DB) return json({ ok: false, error: 'D1 binding DB is missing' }, 500)
   const body = await readBody(request)
   const incoming = normalizeIncoming(body)

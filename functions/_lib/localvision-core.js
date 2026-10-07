@@ -1,4 +1,5 @@
 import {attachIntegrity} from './asset-integrity.js'
+import {putAccounted} from './storage-v3.js'
 export function corsHeaders(extra = {}) {
   return {
     'access-control-allow-origin': '*',
@@ -56,10 +57,10 @@ export function parseTargetStores(value = '') {
 export function normalizeTargetMode(value = '', stores = []) {
   const mode = String(value || '').toLowerCase().trim()
   const list = parseTargetStores(stores)
-  if (mode === 'selected' || mode === 'select' || mode === 'stores') return list.length ? 'selected' : 'all'
+  if (mode === 'selected' || mode === 'select' || mode === 'stores') return 'selected'
   if (mode === '') return list.length ? 'selected' : 'all'
   if (mode === 'all' || mode === '전체') return 'all'
-  return list.length ? 'selected' : 'all'
+  return 'selected'
 }
 
 export function contentTargetFromBody(body = {}, side = '') {
@@ -90,7 +91,7 @@ export function isContentAllowedForStore(row = {}, viewerStore = '') {
   if (mode !== 'selected') return true
   const targetStores = parseTargetStores(row.targetStoresJson ?? row.target_stores_json ?? row.targetStores ?? row.target_stores ?? '')
   const store = cleanSlug(viewerStore || '')
-  if (!store) return true
+  if (!store) return false
   return targetStores.includes(store)
 }
 
@@ -218,15 +219,15 @@ export function isMediaKey(key = '') {
 }
 
 
-export const LV_CORE_VERSION = 'v2.1.2-stable-playback'
+export const LV_CORE_VERSION = 'v3.0.0'
 export const DEFAULT_CONTENT_DURATION = 20
 export const DEFAULT_HEARTBEAT_MS = 600000
 export const DEFAULT_COMMAND_POLL_MS = 300000
 export const DEFAULT_NOTICE_POLL_MS = 300000
 export const DEFAULT_CONTENT_CHECK_MS = 900000
-export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 600
+export const DEFAULT_D1_HEARTBEAT_WRITE_SEC = 1200
 export const DEFAULT_APP_CONFIG_POLL_MS = 1800000
-export const DEFAULT_PLAYER_STATE_POLL_MS = 900000
+export const DEFAULT_PLAYER_STATE_POLL_MS = 300000
 export const DEFAULT_BLACK_MODE_POLL_MS = 300000
 
 export function normalizeLvId(value = '') {
@@ -454,6 +455,7 @@ export function dedupeContentsRows(rows = []) {
 
 
 export async function cleanupDuplicateContents(env) {
+  try{const r=await env.DB.prepare("SELECT store FROM lv_publications WHERE store='_common'").first();if(r)return {ok:true,deleted:0,reason:'v3 preserves explicit content references'}}catch(e){if(!/no such table/.test(e.message))throw e}
   if (!env.DB) return { ok: false, reason: 'D1 binding DB is missing', deleted: 0 }
   try {
     const { results } = await env.DB.prepare(`
@@ -622,6 +624,8 @@ export async function ensureScheduleSchema(env) {
 }
 
 export async function ensureCoreSchema(env) {
+  // v3 was installed after a complete migration. Normal admin actions need no schema repair.
+  try { const ready=await env.DB.prepare("SELECT store FROM lv_publications WHERE store='_common'").first(); if(ready)return {ok:true,mode:'v3-schema-ready'} } catch(e) { if(!/no such table/i.test(e.message))throw e }
   if (!env.DB) throw new Error('D1 binding DB is missing')
 
   await env.DB.prepare(`
@@ -1008,7 +1012,10 @@ export async function upsertR2ScanIntoD1(request, env) {
     if (deviceResult?.ok === false) errors.push(deviceResult.error)
   }
 
+  let deletedKeys=new Set()
+  try {const rows=await env.DB.prepare("SELECT r2_key FROM lv_tombstones WHERE r2_key<>''").all();deletedKeys=new Set(rows.results.map(r=>r.r2_key))}catch(e){if(!/no such table/.test(e.message))throw e}
   for (const content of scan.contents) {
+    if(deletedKeys.has(content.r2Key))continue
     try {
       const existing = await env.DB.prepare(`
         SELECT id, url
@@ -1387,7 +1394,7 @@ export async function makePlaylistSnapshot(request, env, store = '') {
     defaultPlaylistGroupId: defaultPlaylistGroupId(cleanStore),
     defaultPlaylistKey: 'default',
   }
-  try { schedulePayload = await makePlaylistSchedulePayload(env, cleanStore) } catch (error) {}
+  schedulePayload = await makePlaylistSchedulePayload(env, cleanStore)
   const scheduledLeft = Array.isArray(schedulePayload?.activePlaylistGroup?.left) ? schedulePayload.activePlaylistGroup.left : []
   const left = scheduledLeft.length ? scheduledLeft : await readContentsForPlaylist(env, cleanStore, 'left')
   const right = await readContentsForPlaylist(env, cleanStore, 'right', cleanStore)
@@ -1436,7 +1443,7 @@ export async function makePlaylistSnapshot(request, env, store = '') {
 export async function writeJsonToR2(env, key, data) {
   if (!env.MEDIA) return { ok: false, skipped: true, reason: 'R2 binding MEDIA is missing', key }
   const body = JSON.stringify(data, null, 2)
-  await env.MEDIA.put(key, body, {
+  const options = {
     httpMetadata: {
       contentType: 'application/json; charset=utf-8',
       cacheControl: 'public, max-age=30, s-maxage=30',
@@ -1446,7 +1453,11 @@ export async function writeJsonToR2(env, key, data) {
       version: LV_CORE_VERSION,
       updatedAt: data.updatedAt || nowUtcIso(),
     },
-  })
+  }
+  let v3=false
+  try {v3=!!(await env.DB.prepare('SELECT id FROM lv_storage WHERE id=1').first())}catch(e){if(!/no such table/i.test(e.message))throw e}
+  if(v3)await putAccounted(env,key,body,options)
+  else await env.MEDIA.put(key,body,options)
   return { ok: true, key, bytes: body.length }
 }
 

@@ -1,0 +1,6 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> localvision-cms@3.0.0 build
+> node build-static.js
+
+LocalVision CMS v3.0.0 static build: dist refreshed.

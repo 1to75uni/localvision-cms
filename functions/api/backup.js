@@ -1,3 +1,4 @@
+import {projectRuntimeDevices} from '../_lib/runtime-devices.js'
 import { json, ensureCoreSchema, upsertR2ScanIntoD1, mapDevice, safeAll, dedupeContentsRows, cleanupSyntheticR2Duplicates, cleanupDuplicateContents, cleanupDuplicateDevices, dedupeDeviceRows, safeErrorMessage, nowUtcIso, nowKstString } from '../_lib/localvision-core.js'
 
 export async function onRequestOptions() {
@@ -74,7 +75,10 @@ export async function onRequestGet({ request, env }) {
       url,
       sort_order AS sortOrder,
       updated_at AS updatedAt,
-      r2_key AS r2Key
+      r2_key AS r2Key,
+      target_mode AS targetMode,
+      target_stores_json AS targetStoresJson,
+      playlist_group_id AS playlistGroupId
     FROM contents
     ORDER BY side ASC, sort_order ASC, updated_at DESC
   `)
@@ -158,6 +162,6 @@ export async function onRequestGet({ request, env }) {
     stores: stores.results || [],
     contents: dedupeContentsRows(contents.results || []),
     notices: noticeRows,
-    devices: dedupeDeviceRows(devices.results || [], env).map((row) => mapDevice(row, env)),
+    devices: await projectRuntimeDevices(env,dedupeDeviceRows(devices.results || [], env).map((row) => mapDevice(row, env))),
   })
 }

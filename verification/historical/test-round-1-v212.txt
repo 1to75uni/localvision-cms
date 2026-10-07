@@ -1,0 +1,38 @@
+✔ missing database returns explicit failure (6.146865ms)
+✔ new schema is created once on write; never during normal GET (6.33627ms)
+✔ retransmission is idempotent and left/right occurrences remain distinct (4.467177ms)
+✔ per-entry acknowledgement reports partial validity exactly (1.493827ms)
+✔ database failure is not acknowledged as a saved log (6.985801ms)
+✔ event lookup isolates stores and devices (1.932469ms)
+✔ out-of-order health never replaces a newer report (1.929104ms)
+✔ new boot supersedes old session, old pending reports cannot overwrite it (1.257349ms)
+✔ two physical devices in one store retain independent lane states (1.198971ms)
+✔ deliberate black mode is not reported as a playback fault (1.075314ms)
+✔ stale previously healthy status is shown as unknown freshness (0.274995ms)
+✔ invalid JSON gets a client error (0.641949ms)
+✔ old schema read stays read-only; write migrates and manifest survives lookup (11.906284ms)
+✔ metadata is bound to content ID and exact URL (3.199082ms)
+✔ backfill is idempotent, scoped, and does not modify original media (8.373417ms)
+✔ R2 missing source is never marked verified (1.196537ms)
+✔ database error is propagated rather than treated as legacy metadata (0.684934ms)
+✔ delivery health preserves stages and distinguishes verified from legacy (0.599425ms)
+✔ overnight schedules use the weekday on which the interval starts (0.421416ms)
+✔ upload publishes a content row only with persisted integrity; snapshot carries it (20.407489ms)
+✔ bounded MP4 parser reads a normal H.264 track including moov at end (2.098731ms)
+✔ HEVC upload gives an actionable rejection (0.367686ms)
+✔ 4K upload is rejected before R2 activation (0.132941ms)
+✔ 60fps upload is rejected (0.264069ms)
+✔ high 10-bit AVC profile is rejected (0.500567ms)
+✔ corrupt MP4 cannot pass by filename extension (0.391682ms)
+✔ diagnostic UI includes independent lanes and current excluded filenames (20.291248ms)
+✔ database read failure is shown as unavailable, never no errors (3.581579ms)
+✔ untrusted content titles are escaped (3.669703ms)
+✔ delivery UI distinguishes file preparation from playing and legacy assurance (2.304711ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 30
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 166.606486

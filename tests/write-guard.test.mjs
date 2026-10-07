@@ -25,10 +25,10 @@ test('100 TVs / 24 hours: bounded presence, health and error writes under an err
    const result=await saveEvents(e,Array.from({length:40},(_,j)=>({id:`e${i}-${batch}-${j}`,store:`s${i}`,deviceId:`device${i}`,message:'repeated decoder fault'})));
    assert.equal(result.acknowledged.length,40);
   }
-  assert.deepEqual(counts,{presence:14400,health:9600,events:4800});
+  assert.deepEqual(counts,{presence:7200,health:9600,events:4800});
   // Conservative model, NOT Cloudflare billing measurement: allow 2/3/4 row writes respectively.
   const estimated=counts.presence*2+counts.health*3+counts.events*4;
-  assert.equal(estimated,76800);assert.ok(estimated<100000);
+  assert.equal(estimated,62400);assert.ok(estimated<100000);
   console.log('CAPACITY_MODEL',JSON.stringify({TVs:100,hours:24,actualSQLiteRowChanges:counts,conservativeEstimatedD1Writes:estimated,freeDailyLimit:100000,remainingForOtherWork:100000-estimated}));
  }finally{time.restore();e.DB.sqlite.close();}
 });
