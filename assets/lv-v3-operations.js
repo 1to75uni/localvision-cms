@@ -39,7 +39,8 @@ window.fetch=async function(input,init={}){
 };
 function text(tag,value,parent){const n=document.createElement(tag);n.textContent=value;parent.append(n);return n}
 const link=document.createElement('a');link.href='/operations.html';link.textContent='100대 운영 점검';link.style.cssText='position:fixed;right:14px;bottom:14px;padding:10px 14px;background:#163f50;color:white;border-radius:8px;z-index:1000;text-decoration:none;font:14px sans-serif';
-if(!location.pathname.endsWith('/operations.html')){document.body.append(link);setInterval(()=>{if(!document.hidden)publishPending()},60000);return}
+const isOperationsPage=/\/operations(?:\.html)?\/?$/.test(location.pathname);
+if(!isOperationsPage){document.body.append(link);setInterval(()=>{if(!document.hidden)publishPending()},60000);return}
 const root=document.getElementById('operations'),controls=text('div','',root),status=text('p','확인 중...',root),list=text('div','',root);
 let busy=false;
 function button(label,task){const n=text('button',label,controls);n.addEventListener('click',async()=>{if(busy)return;busy=true;status.textContent='처리 중...';try{await task();await refresh()}catch(e){status.textContent=e.message}finally{busy=false}})}
