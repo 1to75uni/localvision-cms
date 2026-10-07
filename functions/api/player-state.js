@@ -226,7 +226,20 @@ export async function onRequestGet({ request, env }) {
     if (snapshot?.playlists) snapshot = { ...snapshot, mode: 'playlist-snapshot-live-readonly' }
   } catch (error) {
     diagnostics.push(`liveContentSync: ${safeErrorMessage(error)}`)
-    return json({ok:false,errorCode:'LV-PLAYLIST-READ-FAILED',error:safeErrorMessage(error)},503)
+    snapshot = {
+      ok: true,
+      playlists: { left: [], right: [] },
+      playlistGroups: {},
+      playlistSchedules: [],
+      activeSchedule: null,
+      activePlaylistGroup: null,
+      activePlaylistKey: 'default',
+      defaultPlaylistGroupId: '',
+      defaultPlaylistKey: 'default',
+      scheduleEngine: { enabled: false },
+      counts: { left: 0, right: 0, playlistGroups: 0, schedules: 0 },
+      playlistVersion: `live_error_${Date.now()}`,
+    }
   }
 
   const deviceRows = await env.DB.prepare(`

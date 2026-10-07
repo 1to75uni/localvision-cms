@@ -37,8 +37,7 @@ test('upload publishes a content row only with persisted integrity; snapshot car
  const {onRequestPost}=await import('../functions/api/upload.js');const {makePlaylistSnapshot}=await import('../functions/_lib/localvision-core.js');
  const e=database();const objects=new Map();e.MEDIA={put:async(key,body)=>{const bytes=typeof body==='string'?body:await new Response(body).text();objects.set(key,bytes);return {key}},get:async()=>null};
  const form=new FormData();form.set('file',new File(['media'],'image.png',{type:'image/png'}));form.set('title','test');form.set('store','qa');form.set('side','left');
- const {ensureCoreSchema}=await import('../functions/_lib/localvision-core.js');const {installSync}=await import('../functions/_lib/sync-v3.js');const {createAdminSession}=await import('../functions/_lib/auth.js');await ensureCoreSchema(e);await installSync(e);e.DB.sqlite.exec('UPDATE lv_storage SET measured_at='+Date.now());form.set('integrity',JSON.stringify(await inspect(new Blob(['media']).stream())));
- const request=new Request('https://cms.test/api/upload',{method:'POST',headers:{'x-lv-admin-token':await createAdminSession(e)},body:form});
+ const request=new Request('https://cms.test/api/upload',{method:'POST',body:form});
  const response=await onRequestPost({request,env:e});assert.equal(response.status,200);const data=await response.json();assert.ok(data.content.integrity.revision);
  const snap=await makePlaylistSnapshot(new Request('https://cms.test'),e,'qa');assert.equal(snap.playlists.left[0].integrity.revision,data.content.integrity.revision);
  assert.ok(e.DB.history.findIndex(x=>x.includes('INSERT INTO asset_integrity'))<e.DB.history.findIndex(x=>/INSERT INTO contents/.test(x)));

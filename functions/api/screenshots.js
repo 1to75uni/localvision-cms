@@ -1,4 +1,3 @@
-import {reserve,finishReservation} from '../_lib/storage-v3.js'
 import { json as coreJson, safeErrorMessage, tryRun, cleanSlug } from '../_lib/localvision-core.js'
 
 const ENDPOINT = '/api/screenshots'
@@ -48,7 +47,7 @@ async function resolveStoreCandidates(env, requestedStore = '', diagnostics = []
     .sort((a, b) => a.distance - b.distance || a.slug.localeCompare(b.slug))
     .slice(0, 3)
     .map((x) => x.slug)
-  const candidates = [requested]
+  const candidates = exact ? [requested] : [requested, ...suggestions.slice(0, 1)]
   return { requested, candidates: [...new Set(candidates.filter(Boolean))], suggestions, storeExists: exact }
 }
 
@@ -109,7 +108,7 @@ async function latestR2Screenshot(request, env, store, diagnostics = []) {
 
 async function readLatestFromD1(env, storeCandidates, deviceId, diagnostics = []) {
   const tryQueries = []
-  if (storeCandidates.length && !deviceId) {
+  if (storeCandidates.length) {
     tryQueries.push({
       mode: 'store-based',
       sql: `
@@ -184,22 +183,32 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
- let reservation=''
- try {
-  if(!env.DB || !env.MEDIA)return json({ok:false,saved:false,error:'D1/R2 unavailable'},503)
-  const form=await request.formData(),file=form.get('file'),store=cleanSlug(form.get('store')||''),deviceId=String(form.get('deviceId')||'').trim()
-  if(!store||!deviceId||!file||typeof file==='string')return json({ok:false,saved:false,error:'file,store,deviceId required'},400)
-  if(!/^[a-zA-Z0-9_-]{1,120}$/.test(deviceId)||file.size>4*1024*1024)return json({ok:false,saved:false,error:'Invalid screenshot size or device'},400)
-  const signature=new Uint8Array(await file.slice(0,8).arrayBuffer())
-  if(signature.join(',')!=='137,80,78,71,13,10,26,10')return json({ok:false,saved:false,error:'PNG required'},422)
-  const registered=await env.DB.prepare('SELECT slug FROM stores WHERE slug=?').bind(store).first();if(!registered)return json({ok:false,saved:false,error:'Unknown store'},404)
-  const now=new Date().toISOString(),id=crypto.randomUUID(),key=`system/screenshots/${store}/${deviceId}/${id}.png`
-  reservation=id;await reserve(env,id,file.size,{key},'screenshot')
-  await env.MEDIA.put(key,file.stream(),{httpMetadata:{contentType:'image/png',cacheControl:'public,max-age=3600'}})
-  await finishReservation(env,id,file.size,key,'screenshot')
-  const shot={id,deviceId,store,r2Key:key,url:makePublicUrl(request,env,key),createdAt:now}
-  await env.DB.prepare('INSERT INTO device_screenshots(id,device_id,store,url,r2_key,created_at) VALUES(?,?,?,?,?,?)').bind(id,deviceId,store,shot.url,key,now).run()
-  // The installed APP omits commandId. Never mark all store TVs or a newer command as complete.
-  return json({ok:true,saved:true,screenshot:shot,correlation:'unconfirmed-native-upload'})
- }catch(error){return json({ok:false,saved:false,error:safeErrorMessage(error)},503)}
+  const diagnostics = []
+  try {
+    if (!env.DB) return json({ ok: true, degraded: true, saved: false, error: 'D1 binding DB is missing' })
+    if (!env.MEDIA) return json({ ok: true, degraded: true, saved: false, error: 'R2 binding MEDIA is missing' })
+    const form = await request.formData()
+    const file = form.get('file')
+    const store = cleanSlug(form.get('store') || '')
+    const deviceId = String(form.get('deviceId') || '').trim()
+    if (!store && !deviceId) return json({ ok: false, error: 'store or deviceId is required' }, 400)
+    if (!file || typeof file === 'string') return json({ ok: false, error: 'file is required' }, 400)
+    await lightweightEnsureScreenshotTable(env, diagnostics)
+    const safeStore = store || 'unknown'
+    const safeDeviceId = deviceId || `tv_${safeStore}`
+    const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
+    const key = `system/screenshots/${safeStore}/${safeDeviceId}/${stamp}.png`
+    await env.MEDIA.put(key, file.stream(), { httpMetadata: { contentType: 'image/png', cacheControl: 'public, max-age=31536000' }, customMetadata: { deviceId: safeDeviceId, store: safeStore, type: 'screenshot' } })
+    const screenshot = { id: `ss_${Date.now()}`, deviceId: safeDeviceId, store: safeStore, r2Key: key, url: makePublicUrl(request, env, key), createdAt: new Date().toISOString() }
+    const insert = await tryRun(env, `
+      INSERT INTO device_screenshots (id, device_id, store, url, r2_key, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [screenshot.id, screenshot.deviceId, screenshot.store, screenshot.url, screenshot.r2Key, screenshot.createdAt])
+    if (insert?.ok === false) diagnostics.push(`insert: ${insert.error}`)
+    const update = await tryRun(env, `UPDATE devices SET last_command = ?, command_at = ?, updated_at = CURRENT_TIMESTAMP WHERE store = ? OR id = ?`, ['screenshot_done', screenshot.createdAt, safeStore, safeDeviceId])
+    if (update?.ok === false) diagnostics.push(`deviceUpdate: ${update.error}`)
+    return json({ ok: true, screenshot, diagnostics })
+  } catch (error) {
+    return json({ ok: true, degraded: true, saved: false, diagnostics: [...diagnostics, safeErrorMessage(error)] })
+  }
 }

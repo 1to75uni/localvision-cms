@@ -33,10 +33,6 @@ export async function onRequestGet({request,env}) {
         errors.push(value)
       }
     }catch(error){if(!missingTable(error))diagnostics.push('과거 로그 조회 실패: '+error.message)}
-    try {
-      const rows=await env.DB.prepare(`SELECT s.*,r.store FROM lv_error_samples s JOIN lv_runtime r ON r.installation=s.installation WHERE (?='' OR r.store=?) AND (?='' OR r.installation=?) ORDER BY s.created_at DESC LIMIT ?`).bind(store,store,deviceId,deviceId,limit).all()
-      for(const row of rows.results||[]){const p=JSON.parse(row.payload_json),code=p.errorCode||(p.type==='excluded'?'LV-MEDIA-SESSION-SKIP':p.type==='recovered'?'LV-MEDIA-RECOVERED':'LV-MEDIA-FAIL');errors.push({id:row.id,deviceId:row.installation,store:row.store,errorCode:code,message:p.message||`${p.fileName||p.assetId}: ${p.status||p.type}`,level:p.type==='recovered'?'info':p.level||'warning',createdAtUtc:new Date(row.created_at).toISOString(),createdAt:new Date(row.created_at).toISOString(),extra:p.extra||{side:p.side,itemId:p.assetId,fileName:p.fileName,firstAt:p.firstAt,lastAt:p.lastAt,count:p.count,status:p.status}})}
-    }catch(e){if(!missingTable(e))throw e}
     errors.sort((a,b)=>Date.parse(b.createdAtUtc)-Date.parse(a.createdAtUtc))
     return json({ok:true,degraded:diagnostics.length>0,initialized,errors:errors.slice(0,limit),diagnostics,serverNowUtc:nowUtcIso(),version:HEALTH_VERSION})
   }catch(error){return healthError(error)}

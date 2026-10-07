@@ -261,7 +261,6 @@ export async function onRequestDelete({ request, env }) {
   let d1MirrorRowsDeleted = 0
   let r2RefRows = []
   let realRefRows = []
-  let noticeRefs = []
   let syntheticRefRows = []
 
   if (r2Key) {
@@ -279,31 +278,24 @@ export async function onRequestDelete({ request, env }) {
       r2RefRows = refRows?.results || []
       syntheticRefRows = r2RefRows.filter((r) => String(r.id || '').startsWith('r2_'))
       realRefRows = r2RefRows.filter((r) => !String(r.id || '').startsWith('r2_'))
-      const n=await env.DB.prepare('SELECT id FROM notices WHERE r2_key=? OR media_url LIKE ?').bind(r2Key,`%${r2Key}%`).all();noticeRefs=n.results||[]
     } catch (error) {
       r2DeleteSkipped = `reference check failed: ${String(error?.message || error)}`
     }
   }
-
-  // Logical deletion and its durable trigger tombstone precede physical cleanup.
-  const result = await env.DB.prepare(`DELETE FROM contents WHERE id = ?`).bind(id).run()
 
   if (deleteFile) {
     if (!r2Key) {
       r2DeleteSkipped = 'r2_key not found'
     } else if (!env.MEDIA) {
       r2DeleteSkipped = 'R2 binding MEDIA is missing'
-    } else if (r2DeleteSkipped) {
-      // Do not destroy a shared original when the reference query failed.
-    } else if (realRefRows.length > 0 || noticeRefs.length > 0) {
+    } else if (realRefRows.length > 0) {
       // 실제 CMS 업로드 행(ct_ 등)이 같은 R2 파일을 공유하는 경우에는 안전하게 R2 파일 삭제를 보류합니다.
       // 단, R2 자동 스캔으로 생긴 r2_ 미러 행은 실제 참조가 아니므로 파일 삭제를 막지 않습니다.
-      r2DeleteSkipped = `same r2_key is used by ${realRefRows.length} other content row(s) and ${noticeRefs.length} notice(s)`
+      r2DeleteSkipped = `same r2_key is used by ${realRefRows.length} other real content row(s)`
     } else {
       try {
         await env.MEDIA.delete(r2Key)
         r2Deleted = true
-        try{const tracked=await env.DB.prepare('SELECT byte_size FROM lv_objects WHERE object_key=?').bind(r2Key).first();if(tracked)await env.DB.batch([env.DB.prepare('DELETE FROM lv_objects WHERE object_key=?').bind(r2Key),env.DB.prepare('UPDATE lv_storage SET bytes=MAX(0,bytes-?) WHERE id=1').bind(tracked.byte_size)])}catch(e){r2DeleteSkipped='R2 deleted; capacity accounting awaits inventory: '+e.message}
       } catch (error) {
         r2DeleteSkipped = `R2 delete failed: ${String(error?.message || error)}`
       }
@@ -328,7 +320,7 @@ export async function onRequestDelete({ request, env }) {
     } catch (_) {}
   }
 
-
+  const result = await env.DB.prepare(`DELETE FROM contents WHERE id = ?`).bind(id).run()
 
   let snapshot = null
   try {
